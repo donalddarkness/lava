@@ -2,21 +2,64 @@
 //  TypeChecker.swift
 //  OuroLangCore
 //
-//  Created by OuroLang Team on TodayDate.
+//  Created by OuroLang Team on 2025-06-04.
 //
 
 import Foundation
 
-/// TypeChecker performs semantic analysis on the AST
+/// TypeChecker performs comprehensive type checking on the AST
 /// It validates type correctness, resolves symbols, and applies language rules
 public actor TypeChecker {
+    /// The symbol table for resolving symbols
     private let symbolTable: SymbolTable
+    
+    /// The type resolver for resolving and analyzing types
+    private let typeResolver: TypeResolver
+    
+    /// The type operations for performing advanced type operations
+    private let typeOperations: TypeOperations
+    
+    /// Collected errors during type checking
     private var errors: [Error] = []
-    private var currentReturnType: TypeDefinition?
+    
+    /// Current return type for function body analysis
+    private var currentReturnType: TypeNode?
+    
+    /// Whether we're currently in a loop (for break/continue validation)
     private var isInLoop = false
     
+    /// Whether we're currently in an async context
+    private var isAsyncContext = false
+    
+    /// Whether we're currently in a constructor
+    private var isInConstructor = false
+    
+    /// Stack of types being checked (for circular reference detection)
+    private var typeCheckStack: [String] = []
+    
+    /// Create a new TypeChecker with the given symbol table
     public init(symbolTable: SymbolTable = SymbolTable()) {
         self.symbolTable = symbolTable
+        self.typeResolver = TypeResolver()
+        self.typeOperations = TypeOperations(resolver: typeResolver)
+        
+        // Register primitive types
+        registerPrimitiveTypes()
+    }
+    
+    /// Register all primitive types with the type resolver
+    private func registerPrimitiveTypes() {
+        // Register basic primitive types
+        typeResolver.registerPrimitiveType("Int", mlirType: "i32")
+        typeResolver.registerPrimitiveType("Double", mlirType: "f64")
+        typeResolver.registerPrimitiveType("Float", mlirType: "f32")
+        typeResolver.registerPrimitiveType("Bool", mlirType: "i1")
+        typeResolver.registerPrimitiveType("String", mlirType: "!llvm.struct<(ptr<i8>, i64)>")
+        typeResolver.registerPrimitiveType("Void", mlirType: "!llvm.void")
+        typeResolver.registerPrimitiveType("Any", mlirType: "!llvm.ptr")
+        typeResolver.registerPrimitiveType("Never", mlirType: "!llvm.void")
+        typeResolver.registerPrimitiveType("UInt", mlirType: "i32")
+        typeResolver.registerPrimitiveType("Char", mlirType: "i8")
     }
     
     /// Check an entire program's AST for semantic errors

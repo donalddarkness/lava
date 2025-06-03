@@ -395,8 +395,8 @@ public class Lexer {
         let type = Lexer.keywords[text] ?? .identifier
         
         addToken(type: type, literal: text)
-    }
-
+    }    
+    
     private func scanToken() throws {
         let char = advance()
         
@@ -419,20 +419,89 @@ public class Lexer {
             } else {
                 addToken(type: .dot)
             }
-        case ":": addToken(type: .colon)
+        case ":": 
+            if match(":") {
+                addToken(type: .doubleColon)  // :: for method references
+            } else {
+                addToken(type: .colon)
+            }
         case ";": addToken(type: .semicolon)
-        case "?": addToken(type: .questionMark)
+        case "?":
+            if match("?") {
+                if match("=") {
+                    addToken(type: .nullCoalescingEqual)  // ??=
+                } else {
+                    addToken(type: .nullCoalescing)  // ??
+                }
+            } else {
+                addToken(type: .questionMark)
+            }
 
         // One or two character tokens
         case "-": addToken(type: match("=") ? .minusEqual : (match(">") ? .arrow : .minus))
         case "+": addToken(type: match("=") ? .plusEqual : .plus)
-        case "*": addToken(type: match("=") ? .starEqual : .star)
+        case "*": 
+            if match("*") {
+                addToken(type: match("=") ? .powerEqual : .power)  // ** or **=
+            } else {
+                addToken(type: match("=") ? .starEqual : .star)
+            }
         case "%": addToken(type: match("=") ? .percentEqual : .percent)
 
-        case "!": addToken(type: match("=") ? .bangEqual : .bang)
-        case "=": addToken(type: match("=") ? .equalEqual : .equal)
-        case "<": addToken(type: match("=") ? .lessEqual : .less)
-        case ">": addToken(type: match("=") ? .greaterEqual : .greater)
+        case "!":
+            addToken(type: match("=") ? .bangEqual : .bang)
+        case "=":
+            if match("=") {
+                addToken(type: .equalEqual)
+            } else if match(">") {
+                addToken(type: .doubleArrow)  // => for lambda expression
+            } else {
+                addToken(type: .equal)
+            }
+        case "<":
+            if match("=") {
+                if match(">") {
+                    addToken(type: .spaceship)  // <=> spaceship operator
+                } else {
+                    addToken(type: .lessEqual)
+                }
+            } else if match("<") {
+                addToken(type: match("=") ? .leftShiftEqual : .leftShift)  // << or <<=
+            } else {
+                addToken(type: .less)
+            }
+        case ">":
+            if match("=") {
+                addToken(type: .greaterEqual)
+            } else if match(">") {
+                if match("=") {
+                    addToken(type: .rightShiftEqual)  // >>=
+                } else if match(">") {
+                    addToken(type: match("=") ? .unsignedRightShiftEqual : .unsignedRightShift)  // >>> or >>>=
+                } else {
+                    addToken(type: .rightShift)  // >>
+                }
+            } else {
+                addToken(type: .greater)
+            }
+
+        // Bitwise operators
+        case "&":
+            if match("&") {
+                addToken(type: .and)  // &&
+            } else {
+                addToken(type: match("=") ? .bitwiseAndEqual : .bitwiseAnd)  // & or &=
+            }
+        case "|":
+            if match("|") {
+                addToken(type: .or)  // ||
+            } else {
+                addToken(type: match("=") ? .bitwiseOrEqual : .bitwiseOr)  // | or |=
+            }
+        case "^":
+            addToken(type: match("=") ? .bitwiseXorEqual : .bitwiseXor)  // ^ or ^=
+        case "~":
+            addToken(type: .bitwiseNot)  // ~
 
         case "/":
             if match("/") { // Single-line comment

@@ -42,6 +42,9 @@ public enum ExtendedMLIRPrinterError: Error, CustomStringConvertible {
     case tensorOperationFailure(String)
     case unsupportedControlFlow(String)
     case invalidDialect(String)
+    case invalidTypeCast(String)
+    case incompatibleTypes(String, String)
+    case missingDialect(String)
 
     public var description: String {
         switch self {
@@ -53,6 +56,12 @@ public enum ExtendedMLIRPrinterError: Error, CustomStringConvertible {
             return "Unsupported control flow construct in MLIR: \(flow)"
         case .invalidDialect(let dialect):
             return "Invalid MLIR dialect: \(dialect)"
+        case .invalidTypeCast(let details):
+            return "Invalid type cast in MLIR: \(details)"
+        case .incompatibleTypes(let sourceType, let targetType):
+            return "Incompatible types in MLIR operation: cannot convert \(sourceType) to \(targetType)"
+        case .missingDialect(let dialectName):
+            return "Required dialect not loaded: \(dialectName)"
         }
     }
 }
@@ -60,16 +69,18 @@ public enum ExtendedMLIRPrinterError: Error, CustomStringConvertible {
 // MARK: - Type Mappings
 
 /// Utility structures for mapping OuroLang types to MLIR types
-private struct MLIRTypeMapping {
-    static let defaultIntType = "i32"
+public struct MLIRTypeMapping {    static let defaultIntType = "i32"
     static let defaultFloatType = "f32"
     static let defaultBoolType = "i1"
     static let defaultStringType = "!llvm.ptr<i8>"
-    static let voidType = "void"
+    static let voidType = "none"
     
     /// Maps OuroLang type names to MLIR type names
+    /// Complete mapping according to migration.md
     static let typeMap: [String: String] = [
+        // Standard types
         "int": defaultIntType,
+        "uint": "ui32",
         "float": defaultFloatType,
         "double": "f64",
         "bool": defaultBoolType,
@@ -77,82 +88,191 @@ private struct MLIRTypeMapping {
         "string": defaultStringType,
         "void": voidType,
         "char": "i8",
+        
+        // Integer types with explicit sizes
         "byte": "i8",
+        "ubyte": "ui8",
         "short": "i16",
-        "long": "i64"
+        "ushort": "ui16",
+        "long": "i64",
+        "ulong": "ui64",
+        
+        // Additional types from migration.md
+        "decimal": "f128",  // Using f128 as best approximation in MLIR
+        "half": "f16",
+        
+        // Common optional types
+        "int?": "!llvm.ptr<i32>",
+        "uint?": "!llvm.ptr<ui32>",
+        "float?": "!llvm.ptr<f32>",
+        "double?": "!llvm.ptr<f64>",
+        "bool?": "!llvm.ptr<i1>",
+        "string?": "!llvm.ptr<!llvm.ptr<i8>>",
+        
+        // Common array types
+        "int[]": "!llvm.ptr<i32>",
+        "float[]": "!llvm.ptr<f32>",
+        "double[]": "!llvm.ptr<f64>",
+        "bool[]": "!llvm.ptr<i1>",
+        "string[]": "!llvm.ptr<!llvm.ptr<i8>>",
+        
+        // Common tensor types
+        "tensor<2x2xfloat>": "tensor<2x2xf32>",
+        "tensor<3x3xfloat>": "tensor<3x3xf32>",
+        "tensor<4x4xfloat>": "tensor<4x4xf32>",
+        
+        // Common vector types
+        "vector<2xfloat>": "vector<2xf32>",
+        "vector<3xfloat>": "vector<3xf32>",
+        "vector<4xfloat>": "vector<4xf32>",
     ]
-    
-    /// Converts an OuroLang type name to its MLIR equivalent
+      /// Converts an OuroLang type name to its MLIR equivalent
     /// - Parameter typeName: The OuroLang type name
     /// - Returns: The corresponding MLIR type name
-    /// - Throws: If the type cannot be converted
     static func mapType(_ typeName: String?) -> String {
         guard let typeName = typeName, !typeName.isEmpty else {
             return defaultIntType
         }
         
+        // Try direct lookup first for performance
         if let mlirType = typeMap[typeName.lowercased()] {
             return mlirType
         }
         
-        // Handle array types
-        if typeName.hasSuffix("[]") {
-            let baseType = String(typeName.dropLast(2))
-            if let mappedBaseType = typeMap[baseType.lowercased()] {
-                return "!llvm.ptr<\(mappedBaseType)>"
-            }
+        // Use OuroType for complex type handling
+        let ouroType = OuroType.from(typeName: typeName)
+        return ouroType.mlirType
+    }
+    
+    /// Resolves an OuroLang type to an MLIR type with extended support
+    /// - Parameter ouroType: The OuroLang type to resolve
+    /// - Returns: The corresponding MLIR type
+    /// - Throws: `MLIRPrinterError` if the type cannot be resolved
+    public static func resolveType(_ ouroType: String) throws -> String {
+        // Try direct lookup first for performance
+        if let mlirType = typeMap[ouroType.lowercased()] {
+            return mlirType
         }
         
-        // Default to the original type if no mapping exists
-        return typeName
+        // For dynamic resolution, use the OuroType system
+        let type = OuroType.from(typeName: ouroType)
+        let mlirType = type.mlirType
+        
+        // If the result is the original type name, it wasn't successfully mapped
+        if mlirType == "!\(ouroType)" && !ouroType.contains(".") && !ouroType.starts(with: "!") {
+            throw MLIRPrinterError.unsupportedType("Type \(ouroType) is not supported in MLIR")
+        }
+        
+        return mlirType
     }
 }
 
 // MARK: - Extended Type Mappings
 
 /// Extended utility structures for mapping advanced OuroLang types to MLIR types
-private struct ExtendedMLIRTypeMapping {
+public struct ExtendedMLIRTypeMapping {
     static let tensorType = "tensor"
     static let affineMapType = "affine_map"
     static let dialectType = "dialect"
+    static let vectorType = "vector"
 
     /// Maps advanced OuroLang type names to MLIR type names
     static let extendedTypeMap: [String: String] = [
         "tensor": tensorType,
         "affine_map": affineMapType,
-        "dialect": dialectType
+        "dialect": dialectType,
+        "vector": vectorType,
+        // Support for tensor types with common dimensions
+        "tensor<2x2xfloat>": "tensor<2x2xf32>",
+        "tensor<3x3xfloat>": "tensor<3x3xf32>",
+        "tensor<4x4xfloat>": "tensor<4x4xf32>",
+        "tensor<2x2xdouble>": "tensor<2x2xf64>",
+        "tensor<3x3xdouble>": "tensor<3x3xf64>",
+        "tensor<4x4xdouble>": "tensor<4x4xf64>",
     ]
+    
+    /// Maps OuroLang tensor specifications to MLIR tensor types
+    /// - Parameters:
+    ///   - dimensions: Array of dimension sizes
+    ///   - elementType: Element type within the tensor
+    /// - Returns: MLIR tensor type string
+    static func mapTensorType(dimensions: [Int], elementType: String) -> String {
+        let dims = dimensions.map { String($0) }.joined(separator: "x")
+        let mappedElementType = MLIRTypeMapping.mapType(elementType)
+        return "tensor<\(dims)x\(mappedElementType)>"
+    }
+    
+    /// Maps OuroLang vector specifications to MLIR vector types
+    /// - Parameters:
+    ///   - dimensions: Array of dimension sizes
+    ///   - elementType: Element type within the vector
+    /// - Returns: MLIR vector type string
+    static func mapVectorType(dimensions: [Int], elementType: String) -> String {
+        let dims = dimensions.map { String($0) }.joined(separator: "x")
+        let mappedElementType = MLIRTypeMapping.mapType(elementType)
+        return "vector<\(dims)x\(mappedElementType)>"
+    }
 }
 
-// MARK: - MLIRPrinter Optimization
-
-/// Optimized MLIRPrinter implementation
-public class MLIRPrinter: ASTVisitor {
-    private var typeMappings: [String: String] = MLIRTypeMapping.typeMap.merging(ExtendedMLIRTypeMapping.extendedTypeMap) { _, new in new }
-
-    public func visit(_ node: ASTNode) throws -> String {
-        // Optimized visit logic for AST nodes
-        switch node {
-        case let expr as Expr:
-            return try visitExpression(expr)
-        case let stmt as Stmt:
-            return try visitStatement(stmt)
-        default:
-            throw MLIRPrinterError.unsupportedExpression("Unsupported AST node type: \(type(of: node))")
-        }
+/// Represents a tensor operation in the DSL
+public struct TensorOperation {
+    public let name: String
+    public let dimensions: [Int]
+    public let elementType: String
+    public let isSupported: Bool
+    public let dialect: String
+    
+    public init(name: String, dimensions: [Int], elementType: String, dialect: String = "tensor") {
+        self.name = name
+        self.dimensions = dimensions
+        self.elementType = elementType
+        self.dialect = dialect
+        
+        // Check if this operation is supported
+        let supportedOps = ["extract", "insert", "reshape", "cast", "generate", "collapse_shape", "expand_shape"]
+        self.isSupported = supportedOps.contains(name)
     }
-
-    private func visitExpression(_ expr: Expr) throws -> String {
-        // Handle expressions with extended type mappings
-        guard let type = typeMappings[expr.typeName] else {
-            throw MLIRPrinterError.typeConversionFailure("Unknown type: \(expr.typeName)")
-        }
-        return "mlir.expr \(type)"
+    
+    public var description: String {
+        let dims = dimensions.map { String($0) }.joined(separator: "x")
+        return "\(dialect).\(name)<\(dims)x\(elementType)>"
     }
+}
 
-    private func visitStatement(_ stmt: Stmt) throws -> String {
-        // Handle statements with optimized logic
-        return "mlir.stmt \(stmt.description)"
+/// Represents an affine map in the DSL
+public struct AffineMap {
+    public let dimensions: Int
+    public let symbols: Int
+    public let expressions: [String]
+    public let isValid: Bool
+    
+    public init(dimensions: Int, symbols: Int, expressions: [String]) {
+        self.dimensions = dimensions
+        self.symbols = symbols
+        self.expressions = expressions
+        
+        // Basic validation
+        self.isValid = dimensions >= 0 && symbols >= 0 && !expressions.isEmpty
+    }
+    
+    public var description: String {
+        let dimStr = String(repeating: "d", count: dimensions).enumerated().map { "d\($0)" }.joined(separator: ", ")
+        let symStr = String(repeating: "s", count: symbols).enumerated().map { "s\($0)" }.joined(separator: ", ")
+        let expStr = expressions.joined(separator: ", ")
+        
+        var mapStr = "("
+        if !dimStr.isEmpty {
+            mapStr += dimStr
+        }
+        if !symStr.isEmpty {
+            if !dimStr.isEmpty {
+                mapStr += ", "
+            }
+            mapStr += "[\(symStr)]"
+        }
+        mapStr += ") -> (\(expStr))"
+        
+        return mapStr
     }
 }
 
@@ -176,8 +296,28 @@ public class MLIRPrinter: ASTVisitor {
     /// Maps variables to their types for type tracking
     private var variableTypes: [String: String] = [:]
     
+    /// Tracks which dialects have been loaded
+    private var loadedDialects: Set<String> = []
+    
     /// Creates a new MLIRPrinter instance
-    public init() {}
+    public init() {
+        // Register default dialects that should always be available
+        loadedDialects.insert("std")
+        loadedDialects.insert("arith")
+        loadedDialects.insert("func")
+    }
+    
+    /// Ensures a required dialect is loaded before using its operations
+    /// - Parameter dialect: The dialect name to ensure is loaded
+    /// - Throws: ExtendedMLIRPrinterError if the dialect cannot be loaded
+    private func ensureDialectLoaded(_ dialect: String) throws {
+        guard loadedDialects.contains(dialect) else {
+            // In a real implementation, this would try to load the dialect
+            // For now, we just add it to the set of loaded dialects
+            loadedDialects.insert(dialect)
+            return
+        }
+    }
     
     /**
      Registers a variable with its type in the type tracking system
@@ -197,7 +337,7 @@ public class MLIRPrinter: ASTVisitor {
      - Returns: The determined MLIR type
      */
     private func resolveExpressionType(_ expr: Expr?) -> String {
-        guard let expr = expr else {
+        guard let expr else {
             return MLIRTypeMapping.defaultIntType
         }
         
@@ -247,6 +387,8 @@ public class MLIRPrinter: ASTVisitor {
      - Throws: If the operator is not supported
      */
     private func mapArithmeticOperator(_ op: Token) throws -> String {
+        try ensureDialectLoaded("arith")
+        
         switch op.type {
         case .plus:
             return "arith.addi"
@@ -271,6 +413,8 @@ public class MLIRPrinter: ASTVisitor {
      - Throws: If the operator is not supported
      */
     private func mapComparisonOperator(_ op: Token) throws -> String {
+        try ensureDialectLoaded("arith")
+        
         switch op.type {
         case .equalEqual:
             return "arith.cmpi eq"
@@ -299,6 +443,8 @@ public class MLIRPrinter: ASTVisitor {
      - Throws: If any child expressions can't be converted
      */
     public func visitFunctionDecl(_ decl: FunctionDecl) throws -> String {
+        try ensureDialectLoaded("func")
+        
         let name = decl.name.text
         let returnType = MLIRTypeMapping.mapType(decl.returnType?.name.text)
         
@@ -416,6 +562,10 @@ public class MLIRPrinter: ASTVisitor {
         case .false:
             return MLIR.boolConstantOp(name: name, value: false)
             
+        case .nil:
+            // Handle null/nil values according to the OuroLang specification
+            return MLIR.nullConstantOp(name: name, type: type)
+            
         default:
             break
         }
@@ -434,6 +584,8 @@ public class MLIRPrinter: ASTVisitor {
      - Throws: If the return value expression can't be converted
      */
     public func visitReturnStmt(_ stmt: ReturnStmt) throws -> String {
+        try ensureDialectLoaded("func")
+        
         if let value = stmt.value {
             let v = try value.accept(visitor: self)
             let typeName = resolveExpressionType(stmt.value)
@@ -462,6 +614,8 @@ public class MLIRPrinter: ASTVisitor {
      - Throws: If any expressions in condition or branches can't be converted
      */
     public func visitIfStmt(_ stmt: IfStmt) throws -> String {
+        try ensureDialectLoaded("scf")
+        
         let condExpr = try stmt.condition.accept(visitor: self)
         let thenBody = try stmt.thenBranch.accept(visitor: self)
         
@@ -505,6 +659,8 @@ public class MLIRPrinter: ASTVisitor {
      - Throws: If condition or body expressions can't be converted
      */
     public func visitWhileStmt(_ stmt: WhileStmt) throws -> String {
+        try ensureDialectLoaded("scf")
+        
         let condExprGen = { () -> String in
             guard let condExpr = try? stmt.condition.accept(visitor: self) else {
                 return MLIR.boolConstantOp(name: "cond", value: true)
@@ -527,6 +683,8 @@ public class MLIRPrinter: ASTVisitor {
      - Throws: If initializer, condition, increment or body can't be converted
      */
     public func visitForStmt(_ stmt: ForStmt) throws -> String {
+        try ensureDialectLoaded("scf")
+        
         // Handle each component of the for loop, gracefully handling nil values
         let initCode = try stmt.initializer?.accept(visitor: self) ?? ""
         
@@ -569,6 +727,8 @@ public class MLIRPrinter: ASTVisitor {
      - Returns: MLIR text for the branch operation
      */
     public func visitBreakStmt(_ stmt: BreakStmt) throws -> String {
+        try ensureDialectLoaded("cf")
+        
         // For break statements in MLIR, we branch to the end of the loop
         return MLIR.br("end")
     }
@@ -580,6 +740,8 @@ public class MLIRPrinter: ASTVisitor {
      - Returns: MLIR text for the branch operation
      */
     public func visitContinueStmt(_ stmt: ContinueStmt) throws -> String {
+        try ensureDialectLoaded("cf")
+        
         // For continue statements in MLIR, we branch to the condition
         return MLIR.br("condition")
     }
@@ -617,15 +779,13 @@ public class MLIRPrinter: ASTVisitor {
             let opName = try mapComparisonOperator(expr.op)
             return "%\(resultName) = \(opName) \(leftExpr), \(rightExpr) : \(leftType)"
         case .and:
+            try ensureDialectLoaded("arith")
             // Logical AND
-            return """
-            %and_cond = arith.andi \(leftExpr), \(rightExpr) : i1
-            """
+            return "%\(resultName) = arith.andi \(leftExpr), \(rightExpr) : i1"
         case .or:
+            try ensureDialectLoaded("arith")
             // Logical OR
-            return """
-            %or_cond = arith.ori \(leftExpr), \(rightExpr) : i1
-            """
+            return "%\(resultName) = arith.ori \(leftExpr), \(rightExpr) : i1"
         default:
             throw MLIRPrinterError.invalidOperator(expr.op.text)
         }
@@ -675,9 +835,18 @@ public class MLIRPrinter: ASTVisitor {
         
         switch expr.op.type {
         case .minus:
-            // Negate the value
-            return "%\(resultName) = arith.negf \(rightExpr) : \(rightType)"
+            try ensureDialectLoaded("arith")
+            
+            // For numeric types
+            if rightType == MLIRTypeMapping.defaultIntType || rightType == "i64" || rightType == "i16" || rightType == "i8" {
+                // Integer negation
+                return "%\(resultName) = arith.subi %zero, \(rightExpr) : \(rightType)"
+            } else {
+                // Float negation
+                return "%\(resultName) = arith.negf \(rightExpr) : \(rightType)"
+            }
         case .bang:
+            try ensureDialectLoaded("arith")
             // Logical NOT
             return "%\(resultName) = arith.xori \(rightExpr), %true : i1"
         default:
@@ -708,6 +877,8 @@ public class MLIRPrinter: ASTVisitor {
      - Throws: If the callee or arguments can't be converted
      */
     public func visitCallExpr(_ expr: CallExpr) throws -> String {
+        try ensureDialectLoaded("func")
+        
         // Handle the callee
         let callee: String
         if let varExpr = expr.callee as? VariableExpr {
@@ -732,7 +903,7 @@ public class MLIRPrinter: ASTVisitor {
         
         // Build the call
         let argsString = args.joined(separator: ", ")
-        return "%\(resultName) = call \(callee)(\(argsString)) : (\(argTypes)) -> \(MLIRTypeMapping.defaultIntType)"
+        return "%\(resultName) = func.call \(callee)(\(argsString)) : (\(argTypes)) -> \(MLIRTypeMapping.defaultIntType)"
     }
     
     /**
@@ -812,12 +983,14 @@ public class MLIRPrinter: ASTVisitor {
      - Returns: MLIR text for the super method call
      */
     public func visitSuperExpr(_ expr: SuperExpr) throws -> String {
+        try ensureDialectLoaded("func")
+        
         // Create a unique name for the result
         let resultName = "super_\(UUID().uuidString.prefix(8))"
         
         // Create a super method call (simplified)
         return """
-        %\(resultName) = call @super_\(expr.method.text)(%this) : (!llvm.ptr) -> \(MLIRTypeMapping.defaultIntType)
+        %\(resultName) = func.call @super_\(expr.method.text)(%this) : (!llvm.ptr) -> \(MLIRTypeMapping.defaultIntType)
         """
     }
     
@@ -874,8 +1047,10 @@ public class MLIRPrinter: ASTVisitor {
         
         switch expr.op.type {
         case .and:
+            try ensureDialectLoaded("arith")
             return "%\(resultName) = arith.andi \(leftExpr), \(rightExpr) : i1"
         case .or:
+            try ensureDialectLoaded("arith")
             return "%\(resultName) = arith.ori \(leftExpr), \(rightExpr) : i1"
         default:
             throw MLIRPrinterError.invalidOperator(expr.op.text)
@@ -894,9 +1069,11 @@ public class MLIRPrinter: ASTVisitor {
         let valueExpr = try stmt.expression.accept(visitor: self)
         let valueType = resolveExpressionType(stmt.expression)
         
+        try ensureDialectLoaded("func")
+        
         // Create a print operation using external function call
         return """
-        "std.call"(\(valueExpr)) { callee = @print_\(valueType) } : (\(valueType)) -> ()
+        func.call @print_\(valueType)(\(valueExpr)) : (\(valueType)) -> ()
         """
     }
     
@@ -963,6 +1140,29 @@ public class MLIRPrinter: ASTVisitor {
         return code
     }
     
+    /**
+     Converts an index expression to MLIR operations
+     
+     - Parameter expr: The index expression to convert
+     - Returns: MLIR text for array access
+     - Throws: If array or index can't be converted
+     */
+    public func visitIndexExpr(_ expr: IndexExpr) throws -> String {
+        let array = try expr.array.accept(visitor: self)
+        let index = try expr.index.accept(visitor: self)
+        
+        // Create a unique name for the result
+        let resultName = "idx_access_\(UUID().uuidString.prefix(8))"
+        
+        // Determine element type (simplified)
+        let elementType = MLIRTypeMapping.defaultIntType
+        
+        // Create array element load operation
+        return """
+        %\(resultName) = "std.load"(\(array), \(index)) : (!llvm.ptr<\(elementType)>, i32) -> \(elementType)
+        """
+    }
+    
     // MARK: - Utility Methods
     
     /**
@@ -1017,38 +1217,119 @@ extension MLIRPrinter {
     /// Generates MLIR code for affine maps
     /// - Parameter map: The affine map to convert
     /// - Returns: MLIR representation of the affine map
-    /// - Throws: `MLIRPrinterError` if the map is invalid
+    /// - Throws: `ExtendedMLIRPrinterError` if the map is invalid
     public func generateAffineMap(_ map: AffineMap) throws -> String {
+        try ensureDialectLoaded("affine")
+        
         guard map.isValid else {
             throw ExtendedMLIRPrinterError.invalidAffineMap("Invalid affine map: \(map.description)")
         }
+        
         return "affine_map<\(map.description)>"
     }
 
     /// Generates MLIR code for tensor operations
     /// - Parameter operation: The tensor operation to convert
     /// - Returns: MLIR representation of the tensor operation
-    /// - Throws: `MLIRPrinterError` if the operation is unsupported
+    /// - Throws: `ExtendedMLIRPrinterError` if the operation is unsupported
     public func generateTensorOperation(_ operation: TensorOperation) throws -> String {
+        try ensureDialectLoaded(operation.dialect)
+        
         guard operation.isSupported else {
             throw ExtendedMLIRPrinterError.tensorOperationFailure("Unsupported tensor operation: \(operation.name)")
         }
-        return "tensor_op<\(operation.name)>"
+        
+        return "\(operation.dialect).\(operation.name)<\(operation.description)>"
+    }
+    
+    /// Creates MLIR code for tensor type declarations
+    /// - Parameters:
+    ///   - dimensions: Array of dimension sizes
+    ///   - elementType: The type of elements in the tensor
+    /// - Returns: MLIR tensor type declaration string
+    /// - Throws: `MLIRPrinterError` if the tensor type cannot be created
+    public func createTensorType(dimensions: [Int], elementType: String) throws -> String {
+        try ensureDialectLoaded("tensor")
+        
+        let mlirElementType = MLIRTypeMapping.mapType(elementType)
+        let dims = dimensions.map { String($0) }.joined(separator: "x")
+        return "tensor<\(dims)x\(mlirElementType)>"
+    }
+    
+    /// Generates MLIR code for memref operations
+    /// - Parameters:
+    ///   - operation: The operation name (e.g., "load", "store", "cast")
+    ///   - dimensions: Array of dimension sizes
+    ///   - elementType: Element type for the memref
+    ///   - operands: Operands for the operation
+    /// - Returns: MLIR representation of the memref operation
+    /// - Throws: `MLIRPrinterError` if the operation is unsupported
+    public func generateMemRefOperation(
+        operation: String,
+        dimensions: [Int],
+        elementType: String,
+        operands: [String]
+    ) throws -> String {
+        try ensureDialectLoaded("memref")
+        
+        let mlirElementType = MLIRTypeMapping.mapType(elementType)
+        let dims = dimensions.map { String($0) }.joined(separator: "x")
+        let ops = operands.joined(separator: ", ")
+        
+        return "memref.\(operation) \(ops) : memref<\(dims)x\(mlirElementType)>"
+    }
+    
+    /// Generates MLIR code for vector operations
+    /// - Parameters:
+    ///   - operation: The operation name (e.g., "broadcast", "extract", "insert")
+    ///   - dimensions: Array of dimension sizes
+    ///   - elementType: Element type for the vector
+    ///   - operands: Operands for the operation
+    /// - Returns: MLIR representation of the vector operation
+    /// - Throws: `MLIRPrinterError` if the operation is unsupported
+    public func generateVectorOperation(
+        operation: String,
+        dimensions: [Int],
+        elementType: String,
+        operands: [String]
+    ) throws -> String {
+        try ensureDialectLoaded("vector")
+        
+        let mlirElementType = MLIRTypeMapping.mapType(elementType)
+        let dims = dimensions.map { String($0) }.joined(separator: "x")
+        let ops = operands.joined(separator: ", ")
+        
+        return "vector.\(operation) \(ops) : vector<\(dims)x\(mlirElementType)>"
     }
 }
 
-// MARK: - Improved Type Mapping
+// MARK: - MLIR Utility Extensions
 
-/// Extends type mapping to include advanced types and better error handling
-extension MLIRTypeMapping {
-    /// Resolves an OuroLang type to an MLIR type
-    /// - Parameter ouroType: The OuroLang type to resolve
-    /// - Returns: The corresponding MLIR type
-    /// - Throws: `MLIRPrinterError` if the type cannot be resolved
-    public static func resolveType(_ ouroType: String) throws -> String {
-        guard let mlirType = typeMap[ouroType] ?? extendedTypeMap[ouroType] else {
-            throw MLIRPrinterError.unsupportedType("Type \(ouroType) is not supported in MLIR")
-        }
-        return mlirType
+extension MLIR {
+    /// Generates MLIR code for a null constant
+    /// - Parameters:
+    ///   - name: The variable name
+    ///   - type: The MLIR type of the null value
+    /// - Returns: MLIR representation of a null constant
+    static func nullConstantOp(name: String, type: String) -> String {
+        """
+        %\(name) = "llvm.mlir.null"() : () -> \(type)
+        """
+    }
+    
+    /// Generates MLIR code for a tensor constant operation
+    /// - Parameters:
+    ///   - name: The variable name
+    ///   - dimensions: Tensor dimensions
+    ///   - elementType: Element type
+    ///   - values: Array of values
+    /// - Returns: MLIR representation of a tensor constant
+    static func tensorConstantOp(name: String, dimensions: [Int], elementType: String, values: [String]) -> String {
+        let dims = dimensions.map { String($0) }.joined(separator: "x")
+        let valuesList = values.joined(separator: ", ")
+        
+        return """
+        %\(name) = arith.constant dense<[\(valuesList)]> : tensor<\(dims)x\(elementType)>
+        """
     }
 }

@@ -97,11 +97,26 @@ public enum TokenType: Equatable, Hashable, CaseIterable, Sendable {
     case bang, bangEqual         // ! !=
     case equal, equalEqual       // = ==
     case greater, greaterEqual   // > >=
-    case less, lessEqual         // < <=
-
-    case arrow                   // -> (e.g., for lambda or return type)
+    case less, lessEqual         // < <=    case arrow                   // -> (e.g., for lambda or return type)
+    case doubleArrow             // => (e.g., for lambda expression body)
     case doubleDot               // .. (e.g., for ranges, exclusive)
     case tripleDot               // ... (e.g., for ranges, inclusive, or varargs)
+    case nullCoalescing          // ?? (null coalescing operator)
+    case nullCoalescingEqual     // ??= (null coalescing assignment)
+    case spaceship               // <=> (spaceship comparison operator)
+    case doubleColon             // :: (method reference operator)
+    
+    // Bitwise operators
+    case bitwiseAnd, bitwiseAndEqual     // & &=
+    case bitwiseOr, bitwiseOrEqual       // | |=
+    case bitwiseXor, bitwiseXorEqual     // ^ ^=
+    case bitwiseNot                      // ~ (bitwise NOT)
+    case leftShift, leftShiftEqual       // << <<=
+    case rightShift, rightShiftEqual     // >> >>=
+    case unsignedRightShift, unsignedRightShiftEqual // >>> >>>=
+    
+    // Power operator
+    case power, powerEqual               // ** **=
 
     // MARK: - Literals
     case identifier
@@ -109,36 +124,60 @@ public enum TokenType: Equatable, Hashable, CaseIterable, Sendable {
     case integer
     case float
     case char
+    case binaryInteger           // 0b prefix (binary)
+    case hexInteger              // 0x prefix (hexadecimal)
+    case octalInteger            // 0o prefix (octal)
 
     // MARK: - Keywords
     // Types & Declarations
     case `class`, `struct`, `enum`, `interface`
     case `var`, `const`, `func`, `init`
     case `extension`, `typealias`, `protocol`
+    case `void`                  // Void return type
+    
+    // Control Flow
     case `if`, `else`, `switch`, `case`, `default`
     case `for`, `in`, `while`, `do`
     case `break`, `continue`, `return`
+    
+    // Error Handling
     case `throw`, `throws`, `rethrows`
     case `try`, `catch`, `finally`
+    case `assert`                // Assertion keyword
+    
+    // Literals & Values
     case `true`, `false`, `null`
+    
+    // Access Control
     case `public`, `private`, `protected`, `internal`, `fileprivate`
+    
+    // Modifiers
     case `static`, `final`, `abstract`, `sealed`
     case `override`, `lazy`, `async`, `await`
     case `get`, `set`, `willSet`, `didSet`
-    case `is`, `as`
-    case `extends`, `implements`
-    case `super`, `this`
+    
+    // Type Operations
+    case `is`, `as`, `typeof`    // Type checking/conversion keywords
+    
+    // OOP Keywords
+    case `extends`, `implements` // Inheritance keywords
+    case `super`, `this`, `base` // References
+    
+    // Module Management
     case `import`, `package`, `module`
-    case `yield`, `defer` // New keywords added
-
+    
+    // Other Flow Control
+    case `yield`, `defer`        // Control flow keywords
+    
+    // New keywords from migration.md
+    case `new`                   // Object instantiation
+    
     // MARK: - Special
-    case eof // End Of File
-    case unknown // For unrecognized characters/sequences
+    case eof                     // End Of File
+    case unknown                 // For unrecognized characters/sequences
 
-    // Add more as OuroLang's syntax is defined
-
-    // New additions
-    case and, or                 // && ||
+    // Logical operators
+    case and, or, not            // && || !
 }
 
 // Convenience for debugging and LSP

@@ -313,11 +313,11 @@ public actor DispatcherServlet {
             
         return response
     }
-        
-    private func finalizeResponse(request: HttpRequest, response: HttpResponse) async -> HttpResponse {
+          private func finalizeResponse(request: HttpRequest, response: HttpResponse) async -> HttpResponse {
         var finalResponse = response
             
-        for interceptor in interceptors {
+        // Apply post-handle interceptors in reverse order to maintain FILO processing
+        for interceptor in interceptors.reversed() {
             finalResponse = interceptor.postHandle(request: request, response: finalResponse)
         }
 

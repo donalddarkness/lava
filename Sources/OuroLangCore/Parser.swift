@@ -31,10 +31,117 @@ public enum ParserError: Error, CustomStringConvertible {
     }
 }
 
+/// Represents severity levels for diagnostic messages
+public enum DiagnosticSeverity {
+    case error
+    case warning
+    case info
+    case hint
+}
+
+/// Represents a diagnostic message with source location information
+public struct Diagnostic: Equatable, Hashable {
+    public let severity: DiagnosticSeverity
+    public let message: String
+    public let line: Int
+    public let column: Int
+    public let source: String
+    public let relatedInfo: [String]?
+    
+    public init(
+        severity: DiagnosticSeverity, 
+        message: String, 
+        line: Int, 
+        column: Int,
+        source: String = "",
+        relatedInfo: [String]? = nil
+    ) {
+        self.severity = severity
+        self.message = message
+        self.line = line
+        self.column = column
+        self.source = source
+        self.relatedInfo = relatedInfo
+    }
+}
+
+/// Manages collection and reporting of diagnostics during parsing
+public class DiagnosticManager {
+    private(set) var diagnostics: [Diagnostic] = []
+    private var hasErrors: Bool = false
+    
+    /// Add a new diagnostic to the collection
+    public func report(
+        _ severity: DiagnosticSeverity, 
+        _ message: String, 
+        line: Int, 
+        column: Int,
+        source: String = "",
+        relatedInfo: [String]? = nil
+    ) {
+        let diagnostic = Diagnostic(
+            severity: severity,
+            message: message,
+            line: line,
+            column: column,
+            source: source,
+            relatedInfo: relatedInfo
+        )
+        diagnostics.append(diagnostic)
+        
+        if severity == .error {
+            hasErrors = true
+        }
+    }
+    
+    /// Report diagnostic from a token
+    public func report(
+        _ severity: DiagnosticSeverity,
+        _ message: String,
+        token: Token,
+        relatedInfo: [String]? = nil
+    ) {
+        report(
+            severity,
+            message,
+            line: token.line,
+            column: token.column,
+            source: token.lexeme,
+            relatedInfo: relatedInfo
+        )
+    }
+    
+    /// Check if any errors have been reported
+    public func containsErrors() -> Bool {
+        return hasErrors
+    }
+    
+    /// Clear all diagnostics
+    public func clear() {
+        diagnostics.removeAll()
+        hasErrors = false
+    }
+}
+
 /// The Parser converts a sequence of tokens into an Abstract Syntax Tree (AST).
 public class Parser {
     private let tokens: [Token]
     private var current: Int = 0
+    
+    // Diagnostic system for better error reporting
+    private let diagnostics = DiagnosticManager()
+    
+    // Recovery tracking for better error management
+    private var panicMode = false
+    private var recoveryTokens: Set<TokenType> = []
+    
+    // Swift 6.1 optimizations - use lazy properties for common parsing patterns
+    private lazy var expressionParsers: [() throws -> Expr?] = [
+        parseLambdaExpression,
+        parseMethodReferenceExpression,
+        parseTernaryExpression,
+        parseAssignment
+    ]
     
     public init(tokens: [Token]) {
         self.tokens = tokens
@@ -43,6 +150,8 @@ public class Parser {
     // MARK: - Parsing Entry Points
     
     /// Parses the entire source into a list of declarations.
+    /// - Returns: List of parsed declarations
+    /// - Throws: ParserError if unrecoverable parsing errors occur
     public func parse() throws -> [Decl] {
         var declarations: [Decl] = []
         
@@ -52,7 +161,21 @@ public class Parser {
             }
         }
         
+        // Report any diagnostics that were collected
+        if diagnostics.containsErrors() {
+            throw ParserError.invalidStatement(
+                "Parsing failed with \(diagnostics.diagnostics.filter { $0.severity == .error }.count) errors",
+                line: 1, 
+                column: 1
+            )
+        }
+        
         return declarations
+    }
+    
+    /// Returns all collected diagnostics
+    public func getDiagnostics() -> [Diagnostic] {
+        return diagnostics.diagnostics
     }
     
     // MARK: - Declaration Parsing
@@ -60,23 +183,19 @@ public class Parser {
     /// Parses a declaration (class, function, variable, etc.).
     private func parseDeclaration() throws -> Decl? {
         do {
-            if match(.class) {
-                return try parseClassDeclaration()
-            }
-            if match(.struct) {
-                return try parseStructDeclaration()
-            }
-            if match(.enum) {
-                return try parseEnumDeclaration()
-            }
-            if match(.interface) {
-                return try parseInterfaceDeclaration()
-            }
-            if match(.func) {
-                return try parseFunctionDeclaration()
-            }
-            if match(.var) {
-                return try parseVarDeclaration()
+            let declarationParsers: [(TokenType, () throws -> Decl)] = [
+                (.class, parseClassDeclaration),
+                (.struct, parseStructDeclaration),
+                (.enum, parseEnumDeclaration),
+                (.interface, parseInterfaceDeclaration),
+                (.func, parseFunctionDeclaration),
+                (.var, parseVarDeclaration)
+            ]
+            
+            for (tokenType, parser) in declarationParsers {
+                if match(tokenType) {
+                    return try parser()
+                }
             }
             
             // If it's not a declaration, it might be a statement
@@ -404,7 +523,8 @@ public class Parser {
     private func parseAssignment() throws -> Expr {
         let expr = try parseOr()
         
-        if match(.equal, .plusEqual, .minusEqual, .starEqual, .slashEqual, .percentEqual) {
+        if match(.equal, .plusEqual, .minusEqual, .starEqual, .slashEqual, .percentEqual, .powerEqual, 
+                .nullCoalescingEqual, .andEqual, .orEqual, .xorEqual, .leftShiftEqual, .rightShiftEqual) {
             let op = previous()
             let value = try parseAssignment()
             
@@ -421,6 +541,13 @@ public class Parser {
                     case .starEqual: binaryOperatorType = .star
                     case .slashEqual: binaryOperatorType = .slash
                     case .percentEqual: binaryOperatorType = .percent
+                    case .powerEqual: binaryOperatorType = .power
+                    case .nullCoalescingEqual: binaryOperatorType = .nullCoalescing
+                    case .andEqual: binaryOperatorType = .and
+                    case .orEqual: binaryOperatorType = .or
+                    case .xorEqual: binaryOperatorType = .xor
+                    case .leftShiftEqual: binaryOperatorType = .leftShift
+                    case .rightShiftEqual: binaryOperatorType = .rightShift
                     default: fatalError("Unexpected compound assignment operator")
                     }
                     
@@ -465,8 +592,13 @@ public class Parser {
                 )
             } else if let indexExpr = expr as? IndexExpr {
                 // Array index assignment: arr[i] = expr
-                // Not implemented yet, but would be handled here
-                throw ParserError.invalidExpression("Array index assignment not yet supported", line: op.line, column: op.column)
+                return SetIndexExpr(
+                    array: indexExpr.array,
+                    index: indexExpr.index,
+                    value: value,
+                    line: op.line,
+                    column: op.column
+                )
             }
             
             throw ParserError.invalidExpression("Invalid assignment target", line: op.line, column: op.column)
@@ -479,7 +611,7 @@ public class Parser {
     private func parseOr() throws -> Expr {
         var expr = try parseAnd()
         
-        while match(.or) {
+        while match(.or, .nullCoalescing) {
             let op = previous()
             let right = try parseAnd()
             expr = BinaryExpr(left: expr, op: op, right: right, line: op.line, column: op.column)
@@ -505,7 +637,7 @@ public class Parser {
     private func parseEquality() throws -> Expr {
         var expr = try parseComparison()
         
-        while match(.bangEqual, .equalEqual) {
+        while match(.bangEqual, .equalEqual, .spaceship) {
             let op = previous()
             let right = try parseComparison()
             expr = BinaryExpr(left: expr, op: op, right: right, line: op.line, column: op.column)
@@ -542,9 +674,22 @@ public class Parser {
     
     /// Parses a factor expression (multiplication, division, modulo).
     private func parseFactor() throws -> Expr {
-        var expr = try parseUnary()
+        var expr = try parsePower()
         
         while match(.slash, .star, .percent) {
+            let op = previous()
+            let right = try parsePower()
+            expr = BinaryExpr(left: expr, op: op, right: right, line: op.line, column: op.column)
+        }
+        
+        return expr
+    }
+    
+    /// Parses a power expression (exponentiation).
+    private func parsePower() throws -> Expr {
+        var expr = try parseUnary()
+        
+        while match(.power) {
             let op = previous()
             let right = try parseUnary()
             expr = BinaryExpr(left: expr, op: op, right: right, line: op.line, column: op.column)
@@ -625,7 +770,7 @@ public class Parser {
             return LiteralExpr(value: nil, tokenType: .null, line: previous().line, column: previous().column)
         }
         
-        if match(.integer, .float, .string, .char) {
+        if match(.integer, .float, .string, .char, .binaryInteger, .hexInteger, .octalInteger) {
             return LiteralExpr(
                 value: previous().literal,
                 tokenType: previous().type,
@@ -635,9 +780,38 @@ public class Parser {
         }
         
         if match(.leftParen) {
+            // Check if this might be a lambda expression: (param1, param2) => expression
+            if check(.identifier) {
+                let peek = tokens[current]
+                let peekAhead = current + 1 < tokens.count ? tokens[current + 1] : nil
+                
+                // Simple case: (x) => x + 1
+                if peekAhead?.type == .rightParen && current + 2 < tokens.count && tokens[current + 2].type == .doubleArrow {
+                    return try parseLambdaExpression()
+                }
+                
+                // Multiple parameters: (x, y) => x + y
+                if peekAhead?.type == .comma || 
+                   (peekAhead?.type == .colon && current + 2 < tokens.count && tokens[current + 2].type != .doubleArrow) {
+                    return try parseLambdaExpression()
+                }
+            }
+            
+            // Regular grouping expression
             let expr = try parseExpression()
             try consume(.rightParen, "Expected ')' after expression.")
             return GroupingExpr(expression: expr, line: expr.line, column: expr.column)
+        }
+        
+        // Check for parameterless lambda: () => expression
+        if check(.leftParen) && current + 1 < tokens.count && tokens[current + 1].type == .rightParen &&
+           current + 2 < tokens.count && tokens[current + 2].type == .doubleArrow {
+            return try parseLambdaExpression()
+        }
+        
+        // Check for single parameter lambda without parentheses: x => x * 2
+        if check(.identifier) && current + 1 < tokens.count && tokens[current + 1].type == .doubleArrow {
+            return try parseSingleParamLambda()
         }
         
         if match(.this) {
@@ -654,7 +828,15 @@ public class Parser {
             return try parseArrayLiteral()
         }
         
+        if match(.leftBrace) {
+            return try parseDictionaryOrSetLiteral()
+        }
+        
         if match(.identifier) {
+            // Check if this is a method reference: ClassName::methodName
+            if check(.doubleColon) {
+                return try parseMethodReference(className: previous())
+            }
             return VariableExpr(name: previous(), line: previous().line, column: previous().column)
         }
         
@@ -675,6 +857,75 @@ public class Parser {
         try consume(.rightBracket, "Expected ']' after array elements.")
         
         return ArrayExpr(elements: elements, line: startToken.line, column: startToken.column)
+    }
+    
+    /// Parses a dictionary or set literal expression.
+    private func parseDictionaryOrSetLiteral() throws -> Expr {
+        let startToken = previous() // '{'
+        
+        // Empty dictionary or set
+        if match(.rightBrace) {
+            // Default to empty dictionary since it's more common
+            return DictionaryExpr(entries: [], line: startToken.line, column: startToken.column)
+        }
+        
+        // Check if it's a set literal with a hash prefix
+        let isSet = check(.hash)
+        if isSet {
+            advance() // consume '#'
+            return try parseSetLiteral(startToken: startToken)
+        }
+        
+        // Parse first expression to determine if it's a dictionary or set
+        let firstExpr = try parseExpression()
+        
+        // If we see a colon after the first expression, it's a dictionary
+        if match(.colon) {
+            let value = try parseExpression()
+            var entries: [(Expr, Expr)] = [(firstExpr, value)]
+            
+            // Parse remaining key-value pairs
+            while match(.comma) {
+                if check(.rightBrace) {
+                    break // Allow trailing comma
+                }
+                let key = try parseExpression()
+                try consume(.colon, "Expected ':' after dictionary key.")
+                let value = try parseExpression()
+                entries.append((key, value))
+            }
+            
+            try consume(.rightBrace, "Expected '}' after dictionary elements.")
+            return DictionaryExpr(entries: entries, line: startToken.line, column: startToken.column)
+        } else {
+            // It's a set with the first element already parsed
+            var elements: [Expr] = [firstExpr]
+            
+            // Parse remaining elements
+            while match(.comma) {
+                if check(.rightBrace) {
+                    break // Allow trailing comma
+                }
+                elements.append(try parseExpression())
+            }
+            
+            try consume(.rightBrace, "Expected '}' after set elements.")
+            return SetExpr(elements: elements, line: startToken.line, column: startToken.column)
+        }
+    }
+    
+    /// Parses a set literal with the '#' prefix already consumed.
+    private func parseSetLiteral(startToken: Token) throws -> Expr {
+        var elements: [Expr] = []
+        
+        if !check(.rightBrace) {
+            repeat {
+                elements.append(try parseExpression())
+            } while match(.comma)
+        }
+        
+        try consume(.rightBrace, "Expected '}' after set elements.")
+        return SetExpr(elements: elements, line: startToken.line, column: startToken.column)
     }
     
     /// Parses a type annotation.
@@ -709,6 +960,58 @@ public class Parser {
             }
             
             return NamedType(name: name, line: name.line, column: name.column)
+        }
+        
+        // Dictionary/Map type: [KeyType: ValueType]
+        if match(.leftBracket) {
+            let keyType = try parseType()
+            try consume(.colon, "Expected ':' in dictionary type.")
+            let valueType = try parseType()
+            try consume(.rightBracket, "Expected ']' after dictionary type.")
+            
+            return DictionaryType(
+                keyType: keyType,
+                valueType: valueType,
+                line: previous().line,
+                column: previous().column
+            )
+        }
+        
+        // Set type: Set<ElementType>
+        if match(.set) {
+            try consume(.less, "Expected '<' after 'Set'.")
+            let elementType = try parseType()
+            try consume(.greater, "Expected '>' after set element type.")
+            
+            return SetType(
+                elementType: elementType,
+                line: previous().line,
+                column: previous().column
+            )
+        }
+        
+        // Tuple type: (Type1, Type2, ...)
+        if match(.leftParen) {
+            var elementTypes: [TypeNode] = []
+            
+            if !check(.rightParen) {
+                repeat {
+                    elementTypes.append(try parseType())
+                } while match(.comma)
+            }
+            
+            try consume(.rightParen, "Expected ')' after tuple type elements.")
+            
+            return TupleType(
+                elementTypes: elementTypes,
+                line: previous().line,
+                column: previous().column
+            )
+        }
+        
+        // Function type: (ParamType1, ParamType2) -> ReturnType
+        if check(.leftParen) && isFunctionType() {
+            return try parseFunctionType()
         }
         
         throw ParserError.invalidType("Expected type name", line: peek().line, column: peek().column)
@@ -793,6 +1096,86 @@ public class Parser {
             }
         }
     }
+    
+    /// Checks if we're at the start of a function type.
+    private func isFunctionType() -> Bool {
+        // Save current position
+        let startPos = current
+        
+        // Try to parse as a function type
+        var success = false
+        if match(.leftParen) {
+            // Skip parameters
+            var depth = 1
+            while depth > 0 && !isAtEnd() {
+                if peek().type == .leftParen {
+                    depth += 1
+                } else if peek().type == .rightParen {
+                    depth -= 1
+                }
+                advance()
+            }
+            
+            // Check if we have -> after the parameters
+            if !isAtEnd() && peek().type == .arrow {
+                success = true
+            }
+        }
+        
+        // Restore position
+        current = startPos
+        
+        return success
+    }
+    
+    /// Parses a function type: (ParamType1, ParamType2) -> ReturnType
+    private func parseFunctionType() throws -> TypeNode {
+        try consume(.leftParen, "Expected '(' at start of function type.")
+        
+        var parameterTypes: [TypeNode] = []
+        
+        if !check(.rightParen) {
+            repeat {
+                parameterTypes.append(try parseType())
+            } while match(.comma)
+        }
+        
+        try consume(.rightParen, "Expected ')' after function parameter types.")
+        try consume(.arrow, "Expected '->' in function type.")
+        
+        let returnType = try parseType()
+        
+        return FunctionType(
+            parameterTypes: parameterTypes,
+            returnType: returnType,
+            line: previous().line,
+            column: previous().column
+        )
+    }
+    
+    /// Enhanced error handling for unsupported syntax
+    private func unsupportedSyntaxError(_ message: String) throws -> Never {
+        throw ParserError.invalidExpression(message, line: peek().line, column: peek().column)
+    }
+
+    /// Enhanced error handling for invalid constructs
+    private func invalidConstructError(_ message: String) throws -> Never {
+        throw ParserError.invalidStatement(message, line: peek().line, column: peek().column)
+    }
+    
+    /// Helper method to parse a list of expressions separated by a delimiter
+    private func parseExpressionList(delimiter: TokenType, terminator: TokenType) throws -> [Expr] {
+        var expressions: [Expr] = []
+        
+        if !check(terminator) {
+            repeat {
+                expressions.append(try parseExpression())
+            } while match(delimiter)
+        }
+        
+        try consume(terminator, "Expected '")
+        return expressions
+    }
 }
 
 // MARK: - Additional Types Not Directly Defined in AST.swift
@@ -811,5 +1194,296 @@ public class AssignExpr: Expr {
     public override func accept<V: ASTVisitor>(visitor: V) throws -> V.Result {
         // This would need to be added to the ASTVisitor protocol
         fatalError("AssignExpr.accept not implemented")
+    }
+}
+
+/// Set index expression class (e.g., arr[i] = 10)
+public class SetIndexExpr: Expr {
+    public let array: Expr
+    public let index: Expr
+    public let value: Expr
+    
+    public init(array: Expr, index: Expr, value: Expr, line: Int, column: Int) {
+        self.array = array
+        self.index = index
+        self.value = value
+        super.init(line: line, column: column)
+    }
+    
+    public override func accept<V: ASTVisitor>(visitor: V) throws -> V.Result {
+        return try visitor.visitSetIndexExpr(self)
+    }
+}
+
+/// Dictionary literal expression class (e.g., {"key": value})
+public class DictionaryExpr: Expr {
+    public let entries: [(Expr, Expr)]
+    
+    public init(entries: [(Expr, Expr)], line: Int, column: Int) {
+        self.entries = entries
+        super.init(line: line, column: column)
+    }
+    
+    public override func accept<V: ASTVisitor>(visitor: V) throws -> V.Result {
+        return try visitor.visitDictionaryExpr(self)
+    }
+}
+
+/// Set literal expression class (e.g., #{1, 2, 3} or {1, 2, 3})
+public class SetExpr: Expr {
+    public let elements: [Expr]
+    
+    public init(elements: [Expr], line: Int, column: Int) {
+        self.elements = elements
+        super.init(line: line, column: column)
+    }
+    
+    public override func accept<V: ASTVisitor>(visitor: V) throws -> V.Result {
+        return try visitor.visitSetExpr(self)
+    }
+}
+
+/// Lambda expression body type
+public enum LambdaBody {
+    case expression(Expr)
+    case block(BlockStmt)
+}
+
+/// Lambda expression class (e.g., (x, y) => x + y or x => x * 2)
+public class LambdaExpr: Expr {
+    public let parameters: [Parameter]
+    public let body: LambdaBody
+    
+    public init(parameters: [Parameter], body: LambdaBody, line: Int, column: Int) {
+        self.parameters = parameters
+        self.body = body
+        super.init(line: line, column: column)
+    }
+    
+    public override func accept<V: ASTVisitor>(visitor: V) throws -> V.Result {
+        return try visitor.visitLambdaExpr(self)
+    }
+}
+
+/// Method reference expression class (e.g., String::length)
+public class MethodReferenceExpr: Expr {
+    public let className: Token
+    public let methodName: Token
+    
+    public init(className: Token, methodName: Token, line: Int, column: Int) {
+        self.className = className
+        self.methodName = methodName
+        super.init(line: line, column: column)
+    }
+    
+    public override func accept<V: ASTVisitor>(visitor: V) throws -> V.Result {
+        return try visitor.visitMethodReferenceExpr(self)
+    }
+}
+
+/// Parses a lambda expression with multiple parameters: (param1, param2) => expression
+private func parseLambdaExpression() throws -> Expr {
+    // We're already at the position after '('
+    var parameters: [Parameter] = []
+    
+    if !check(.rightParen) {
+        repeat {
+            let name = try consume(.identifier, "Expected parameter name.")
+            var type: TypeNode? = nil
+            
+            if match(.colon) {
+                type = try parseType()
+            }
+            
+            parameters.append(Parameter(name: name, type: type))
+        } while match(.comma)
+    }
+    
+    try consume(.rightParen, "Expected ')' after lambda parameters.")
+    try consume(.doubleArrow, "Expected '=>' after lambda parameters.")
+    
+    // Handle both expression and block body
+    if check(.leftBrace) {
+        // Block body: (x, y) => { statements... }
+        advance() // consume '{'
+        let body = try parseBlockStatement()
+        return LambdaExpr(parameters: parameters, body: .block(body), line: previous().line, column: previous().column)
+    } else {
+        // Expression body: (x, y) => x + y
+        let expr = try parseExpression()
+        return LambdaExpr(parameters: parameters, body: .expression(expr), line: previous().line, column: previous().column)
+    }
+}
+
+/// Parses a lambda expression with a single parameter and no parentheses: x => x + 1
+private func parseSingleParamLambda() throws -> Expr {
+    let name = try consume(.identifier, "Expected parameter name.")
+    let parameter = Parameter(name: name, type: nil)
+    
+    try consume(.doubleArrow, "Expected '=>' after parameter.")
+    
+    // Handle both expression and block body
+    if check(.leftBrace) {
+        // Block body: x => { statements... }
+        advance() // consume '{'
+        let body = try parseBlockStatement()
+        return LambdaExpr(parameters: [parameter], body: .block(body), line: name.line, column: name.column)
+    } else {
+        // Expression body: x => x + 1
+        let expr = try parseExpression()
+        return LambdaExpr(parameters: [parameter], body: .expression(expr), line: name.line, column: name.column)
+    }
+}
+
+/// Parses a method reference: ClassName::methodName
+private func parseMethodReference(className: Token) throws -> Expr {
+    try consume(.doubleColon, "Expected '::' in method reference.")
+    let methodName = try consume(.identifier, "Expected method name after '::'.")
+      return MethodReferenceExpr(
+        className: className,
+        methodName: methodName,
+        line: className.line,
+        column: className.column
+    )
+}
+
+ // End of Parser class
+
+// MARK: - Additional Type Node Classes
+
+/// Dictionary type (e.g., [String: Int])
+public class DictionaryType: TypeNode {
+    public let keyType: TypeNode
+    public let valueType: TypeNode
+    
+    public init(keyType: TypeNode, valueType: TypeNode, line: Int, column: Int) {
+        self.keyType = keyType
+        self.valueType = valueType
+        super.init(line: line, column: column)
+    }
+    
+    public override func accept<V: ASTVisitor>(visitor: V) throws -> V.Result {
+        return try visitor.visitDictionaryType(self)
+    }
+}
+
+/// Set type (e.g., Set<Int>)
+public class SetType: TypeNode {
+    public let elementType: TypeNode
+    
+    public init(elementType: TypeNode, line: Int, column: Int) {
+        self.elementType = elementType
+        super.init(line: line, column: column)
+    }
+    
+    public override func accept<V: ASTVisitor>(visitor: V) throws -> V.Result {
+        return try visitor.visitSetType(self)
+    }
+}
+
+/// Tuple type (e.g., (Int, String, Bool))
+public class TupleType: TypeNode {
+    public let elementTypes: [TypeNode]
+    
+    public init(elementTypes: [TypeNode], line: Int, column: Int) {
+        self.elementTypes = elementTypes
+        super.init(line: line, column: column)
+    }
+    
+    public override func accept<V: ASTVisitor>(visitor: V) throws -> V.Result {
+        return try visitor.visitTupleType(self)
+    }
+}
+
+/// Function type (e.g., (Int, String) -> Bool)
+public class FunctionType: TypeNode {
+    public let parameterTypes: [TypeNode]
+    public let returnType: TypeNode
+    
+    public init(parameterTypes: [TypeNode], returnType: TypeNode, line: Int, column: Int) {
+        self.parameterTypes = parameterTypes
+        self.returnType = returnType
+        super.init(line: line, column: column)
+    }
+    
+    public override func accept<V: ASTVisitor>(visitor: V) throws -> V.Result {
+        return try visitor.visitFunctionType(self)
+    }
+}
+
+extension Parser {
+    // MARK: - Advanced Error Handling
+    
+    /// Reports an error with the current token
+    private func error(_ message: String, severity: DiagnosticSeverity = .error) -> ParserError {
+        let token = peek()
+        diagnostics.report(severity, message, token: token)
+        return ParserError.unexpectedToken(token, message)
+    }
+    
+    /// Enters panic mode for error recovery
+    private func enterPanicMode(synchronizationTokens: Set<TokenType>) {
+        if panicMode { return }
+        
+        panicMode = true
+        recoveryTokens = synchronizationTokens
+    }
+    
+    /// Exits panic mode after recovery
+    private func exitPanicMode() {
+        panicMode = false
+        recoveryTokens.removeAll()
+    }
+    
+    /// Improved synchronize method with configurable synchronization points
+    private func synchronize() {
+        advance()
+        
+        while !isAtEnd() {
+            if previous().type == .semicolon { return }
+            
+            switch peek().type {
+            case .class, .func, .var, .for, .if, .while, .return:
+                return
+            default:
+                if recoveryTokens.contains(peek().type) {
+                    exitPanicMode()
+                    return
+                }
+            }
+            
+            advance()
+        }
+    }
+    
+    /// Helper method for parsing a delimited list
+    /// - Parameters:
+    ///   - parseElement: Function to parse a single element of the list
+    ///   - delimiter: Token type expected between elements
+    ///   - terminator: Token type expected at the end of the list
+    ///   - errorMessage: Message to show if terminator is missing
+    /// - Returns: Array of parsed elements
+    private func parseDelimitedList<T>(
+        parseElement: () throws -> T,
+        delimiter: TokenType,
+        terminator: TokenType,
+        errorMessage: String
+    ) throws -> [T] {
+        var elements: [T] = []
+        
+        if !check(terminator) {
+            repeat {
+                do {
+                    elements.append(try parseElement())
+                } catch {
+                    // Report the error but try to continue parsing
+                    diagnostics.report(.error, "Error in list element: \(error)", token: previous())
+                    synchronize()
+                }
+            } while match(delimiter)
+        }
+        
+        try consume(terminator, errorMessage)
+        return elements
     }
 }

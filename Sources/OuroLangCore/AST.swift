@@ -96,6 +96,13 @@ public protocol ASTVisitor {
     func visitSuperExpr(_ expr: SuperExpr) throws -> Result
     func visitArrayExpr(_ expr: ArrayExpr) throws -> Result
     func visitIndexExpr(_ expr: IndexExpr) throws -> Result
+    // New expression visit methods for additional AST node types
+    func visitAssignExpr(_ expr: AssignExpr) throws -> Result
+    func visitSetIndexExpr(_ expr: SetIndexExpr) throws -> Result
+    func visitDictionaryExpr(_ expr: DictionaryExpr) throws -> Result
+    func visitSetExpr(_ expr: SetExpr) throws -> Result
+    func visitLambdaExpr(_ expr: LambdaExpr) throws -> Result
+    func visitMethodReferenceExpr(_ expr: MethodReferenceExpr) throws -> Result
     
     // Statements
     func visitExpressionStmt(_ stmt: ExpressionStmt) throws -> Result
@@ -121,6 +128,11 @@ public protocol ASTVisitor {
     func visitNamedType(_ type: NamedType) throws -> Result
     func visitArrayType(_ type: ArrayType) throws -> Result
     func visitGenericType(_ type: GenericType) throws -> Result
+    // New type visit methods for additional TypeNode types
+    func visitDictionaryType(_ type: DictionaryType) throws -> Result
+    func visitSetType(_ type: SetType) throws -> Result
+    func visitTupleType(_ type: TupleType) throws -> Result
+    func visitFunctionType(_ type: FunctionType) throws -> Result
 }
 
 // MARK: - Expression Node Types
