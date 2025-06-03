@@ -7,6 +7,7 @@
 
 import Foundation
 import OuroLangCore
+import MLIRQuasiDSL
 
 let version = "0.1.0"
 
@@ -21,7 +22,14 @@ enum TranspilerError: Error, CustomStringConvertible {
     case transpileError(String)
     case outputError(String)
     case unsupportedTargetLanguage(String)
-    
+    case mlirError(String)
+    case javaError(String)
+    case kotlinError(String)
+    case cError(String)
+    case cppError(String)
+    case swiftError(String)
+    case llvmError(String)
+
     var description: String {
         switch self {
         case .noInputFile:
@@ -39,7 +47,21 @@ enum TranspilerError: Error, CustomStringConvertible {
         case .outputError(let message):
             return "Output error: \(message)"
         case .unsupportedTargetLanguage(let lang):
-            return "Unsupported target language: \(lang). Supported targets are: swift, javascript, typescript"
+            return "Unsupported target language: \(lang). Supported targets are: swift, java, kotlin, c, cpp, mlir, llvm"
+        case .mlirError(let message):
+            return "MLIR error: \(message)"
+        case .javaError(let message):
+            return "Java error: \(message)"
+        case .kotlinError(let message):
+            return "Kotlin error: \(message)"
+        case .cError(let message):
+            return "C error: \(message)"
+        case .cppError(let message):
+            return "C++ error: \(message)"
+        case .swiftError(let message):
+            return "Swift error: \(message)"
+        case .llvmError(let message):
+            return "LLVM error: \(message)"
         }
     }
 }
@@ -53,652 +75,528 @@ struct TranspilerOptions {
     var showHelp: Bool = false
     var showVersion: Bool = false
     var prettify: Bool = true
+    var useMLIR: Bool = false
+    var optimizationLevel: Int = 0
+    var bidirectionalMode: Bool = false
+    var emitDebugInfo: Bool = false
+    var preserveComments: Bool = true
 }
 
-enum TargetLanguage: String {
-    case swift = "swift"
-    case javascript = "javascript"
-    case typescript = "typescript"
-    
-    var fileExtension: String {
-        switch self {
-        case .swift: return "swift"
-        case .javascript: return "js"
-        case .typescript: return "ts"
-        }
-    }
-    
-    static func from(string: String) -> TargetLanguage? {
-        switch string.lowercased() {
-        case "swift": return .swift
-        case "js", "javascript": return .javascript
-        case "ts", "typescript": return .typescript
-        default: return nil
-        }
-    }
-}
+// Expanded @Web @Definitions
+final class WebDefinitions {
+    private var definitions: [String: String] = [:]
+    private var javaDefinitions: [String: String] = [:]
+    private var kotlinDefinitions: [String: String] = [:]
+    private var cDefinitions: [String: String] = [:]
+    private var cppDefinitions: [String: String] = [:]
+    private var swiftDefinitions: [String: String] = [:]
+    private var llvmDefinitions: [String: String] = [:]
 
-func parseArguments() throws -> TranspilerOptions {
-    var options = TranspilerOptions()
-    var args = CommandLine.arguments.dropFirst()
-    
-    while !args.isEmpty {
-        let arg = args.removeFirst()
-        
-        switch arg {
-        case "-o", "--output":
-            guard !args.isEmpty else {
-                throw TranspilerError.transpileError("Missing output file after \(arg)")
-            }
-            options.outputFile = args.removeFirst()
-            
-        case "-t", "--target":
-            guard !args.isEmpty else {
-                throw TranspilerError.transpileError("Missing target language after \(arg)")
-            }
-            let targetString = args.removeFirst()
-            if let targetLang = TargetLanguage.from(string: targetString) {
-                options.targetLanguage = targetLang
-            } else {
-                throw TranspilerError.unsupportedTargetLanguage(targetString)
-            }
-            
-        case "--source-map":
-            options.emitSourceMap = true
-            
-        case "--no-pretty":
-            options.prettify = false
-            
-        case "-v", "--verbose":
-            options.verbose = true
-            
-        case "-h", "--help":
-            options.showHelp = true
-            
-        case "--version":
-            options.showVersion = true
-            
-        default:
-            if arg.hasPrefix("-") {
-                throw TranspilerError.transpileError("Unknown option: \(arg)")
-            } else {
-                options.sourceFile = arg
-            }
-        }
+    func addDefinition(key: String, value: String) {
+        definitions[key] = value
     }
-    
-    if !options.showHelp && !options.showVersion && options.sourceFile.isEmpty {
-        throw TranspilerError.noInputFile
-    }
-    
-    return options
-}
 
-func printHelp() {
-    print("""
-    OuroLang Transpiler v\(version)
-    
-    Usage: ouro-transpile [options] input_file
-    
-    Options:
-      -o, --output <file>     Specify output file (default: based on input file)
-      -t, --target <language> Specify target language (default: swift)
-                             Supported targets: swift, javascript, typescript
-      --source-map           Generate source map file
-      --no-pretty            Disable output formatting
-      -v, --verbose          Enable verbose output
-      -h, --help             Display this help message
-      --version              Display version information
-    
-    """)
-}
+    func addJavaDefinition(key: String, value: String) {
+        javaDefinitions[key] = value
+    }
 
-func printVersion() {
-    print("OuroLang Transpiler v\(version)")
-}
+    func addKotlinDefinition(key: String, value: String) {
+        kotlinDefinitions[key] = value
+    }
 
-// MARK: - Transpiler Pipeline
+    func addCDefinition(key: String, value: String) {
+        cDefinitions[key] = value
+    }
 
-protocol CodeGenerator: ASTVisitor {
-    var targetLanguage: TargetLanguage { get }
-    func generate(ast: [Decl]) throws -> String
-}
+    func addCppDefinition(key: String, value: String) {
+        cppDefinitions[key] = value
+    }
 
-// Swift code generator placeholder
-class SwiftCodeGenerator: CodeGenerator {
-    typealias Result = String
-    
-    let targetLanguage: TargetLanguage = .swift
-    
-    func generate(ast: [Decl]) throws -> String {
-        let result = try ast.map { try $0.accept(visitor: self) }.joined(separator: "\n\n")
-        return """
-        // Generated from OuroLang by OuroTranspiler v\(version)
-        // Target: Swift
-        
-        import Foundation
-        
-        \(result)
-        """
+    func addSwiftDefinition(key: String, value: String) {
+        swiftDefinitions[key] = value
     }
-    
-    // Implement the ASTVisitor protocol methods
-    func visitBinaryExpr(_ expr: BinaryExpr) throws -> String {
-        let left = try expr.left.accept(visitor: self)
-        let right = try expr.right.accept(visitor: self)
-        return "(\(left) \(expr.operator.lexeme) \(right))"
+
+    func addLLVMDefinition(key: String, value: String) {
+        llvmDefinitions[key] = value
     }
-    
-    func visitGroupingExpr(_ expr: GroupingExpr) throws -> String {
-        let expression = try expr.expression.accept(visitor: self)
-        return "(\(expression))"
+
+    func getDefinition(for key: String) -> String? {
+        definitions[key]
     }
-    
-    func visitLiteralExpr(_ expr: LiteralExpr) throws -> String {
-        guard let value = expr.value else {
-            return "nil"
-        }
-        
-        switch expr.tokenType {
-        case .string:
-            let escaped = (value as? String)?.replacingOccurrences(of: "\"", with: "\\\"") ?? ""
-            return "\"\(escaped)\""
-        case .integer, .float:
-            return String(describing: value)
-        case .true:
-            return "true"
-        case .false:
-            return "false"
-        case .char:
-            if let char = value as? Character {
-                return "\"\(char)\""
-            }
-            return "\"\""
-        default:
-            return String(describing: value)
-        }
+
+    func getJavaDefinition(for key: String) -> String? {
+        javaDefinitions[key]
     }
-    
-    func visitUnaryExpr(_ expr: UnaryExpr) throws -> String {
-        let right = try expr.right.accept(visitor: self)
-        return "\(expr.operator.lexeme)\(right)"
+
+    func getKotlinDefinition(for key: String) -> String? {
+        kotlinDefinitions[key]
     }
-    
-    func visitVariableExpr(_ expr: VariableExpr) throws -> String {
-        return expr.name.lexeme
+
+    func getCDefinition(for key: String) -> String? {
+        cDefinitions[key]
     }
-    
-    func visitCallExpr(_ expr: CallExpr) throws -> String {
-        let callee = try expr.callee.accept(visitor: self)
-        let arguments = try expr.arguments.map { try $0.accept(visitor: self) }.joined(separator: ", ")
-        return "\(callee)(\(arguments))"
+
+    func getCppDefinition(for key: String) -> String? {
+        cppDefinitions[key]
     }
-    
-    func visitGetExpr(_ expr: GetExpr) throws -> String {
-        let object = try expr.object.accept(visitor: self)
-        return "\(object).\(expr.name.lexeme)"
+
+    func getSwiftDefinition(for key: String) -> String? {
+        swiftDefinitions[key]
     }
-    
-    func visitSetExpr(_ expr: SetExpr) throws -> String {
-        let object = try expr.object.accept(visitor: self)
-        let value = try expr.value.accept(visitor: self)
-        return "\(object).\(expr.name.lexeme) = \(value)"
-    }
-    
-    func visitThisExpr(_ expr: ThisExpr) throws -> String {
-        return "self"
-    }
-    
-    func visitSuperExpr(_ expr: SuperExpr) throws -> String {
-        return "super.\(expr.method.lexeme)"
-    }
-    
-    func visitArrayExpr(_ expr: ArrayExpr) throws -> String {
-        let elements = try expr.elements.map { try $0.accept(visitor: self) }.joined(separator: ", ")
-        return "[\(elements)]"
-    }
-    
-    func visitIndexExpr(_ expr: IndexExpr) throws -> String {
-        let array = try expr.array.accept(visitor: self)
-        let index = try expr.index.accept(visitor: self)
-        return "\(array)[\(index)]"
-    }
-    
-    // Statement visitors
-    func visitExpressionStmt(_ stmt: ExpressionStmt) throws -> String {
-        return try stmt.expression.accept(visitor: self)
-    }
-    
-    func visitBlockStmt(_ stmt: BlockStmt) throws -> String {
-        let statements = try stmt.statements.map { try $0.accept(visitor: self) }.joined(separator: "\n")
-        return "{\n\(statements)\n}"
-    }
-    
-    func visitIfStmt(_ stmt: IfStmt) throws -> String {
-        let condition = try stmt.condition.accept(visitor: self)
-        let thenBranch = try stmt.thenBranch.accept(visitor: self)
-        var result = "if \(condition) \(thenBranch)"
-        
-        if let elseBranch = stmt.elseBranch {
-            let elseCode = try elseBranch.accept(visitor: self)
-            result += " else \(elseCode)"
-        }
-        
-        return result
-    }
-    
-    func visitWhileStmt(_ stmt: WhileStmt) throws -> String {
-        let condition = try stmt.condition.accept(visitor: self)
-        let body = try stmt.body.accept(visitor: self)
-        return "while \(condition) \(body)"
-    }
-    
-    func visitForStmt(_ stmt: ForStmt) throws -> String {
-        // Implementing for loops would depend on the format in OuroLang
-        // This is a simplified representation
-        var result = "for "
-        
-        if let initializer = stmt.initializer {
-            result += try initializer.accept(visitor: self)
-        } else {
-            result += "; "
-        }
-        
-        if let condition = stmt.condition {
-            result += try condition.accept(visitor: self)
-        }
-        result += "; "
-        
-        if let increment = stmt.increment {
-            result += try increment.accept(visitor: self)
-        }
-        
-        let body = try stmt.body.accept(visitor: self)
-        return result + " \(body)"
-    }
-    
-    func visitReturnStmt(_ stmt: ReturnStmt) throws -> String {
-        if let value = stmt.value {
-            return "return " + (try value.accept(visitor: self))
-        }
-        return "return"
-    }
-    
-    func visitBreakStmt(_ stmt: BreakStmt) throws -> String {
-        return "break"
-    }
-    
-    func visitContinueStmt(_ stmt: ContinueStmt) throws -> String {
-        return "continue"
-    }
-    
-    // Declaration visitors
-    func visitVarDecl(_ decl: VarDecl) throws -> String {
-        var result = "var \(decl.name.lexeme)"
-        
-        if let typeAnnotation = decl.typeAnnotation {
-            result += ": " + (try typeAnnotation.accept(visitor: self))
-        }
-        
-        if let initializer = decl.initializer {
-            result += " = " + (try initializer.accept(visitor: self))
-        }
-        
-        return result + ";"
-    }
-    
-    func visitFunctionDecl(_ decl: FunctionDecl) throws -> String {
-        let params = decl.params.map { param -> String in
-            var result = "\(param.name.lexeme): "
-            // Add type and default value handling here
-            return result
-        }.joined(separator: ", ")
-        
-        var result = "func \(decl.name.lexeme)(\(params))"
-        
-        if let returnType = decl.returnType {
-            result += " -> " + (try returnType.accept(visitor: self))
-        }
-        
-        let body = try decl.body.accept(visitor: self)
-        return result + " \(body)"
-    }
-    
-    func visitClassDecl(_ decl: ClassDecl) throws -> String {
-        var result = "class \(decl.name.lexeme)"
-        
-        if let superclass = decl.superclass {
-            result += ": " + (try superclass.accept(visitor: self))
-        }
-        
-        if !decl.interfaces.isEmpty {
-            let protocols = try decl.interfaces.map { try $0.accept(visitor: self) }.joined(separator: ", ")
-            if decl.superclass != nil {
-                result += ", \(protocols)"
-            } else {
-                result += ": \(protocols)"
-            }
-        }
-        
-        result += " {\n"
-        
-        // Add properties
-        for property in decl.properties {
-            result += try property.accept(visitor: self) + "\n"
-        }
-        
-        // Add methods
-        for method in decl.methods {
-            result += try method.accept(visitor: self) + "\n"
-        }
-        
-        result += "}"
-        return result
-    }
-    
-    func visitStructDecl(_ decl: StructDecl) throws -> String {
-        var result = "struct \(decl.name.lexeme)"
-        
-        if !decl.interfaces.isEmpty {
-            let protocols = try decl.interfaces.map { try $0.accept(visitor: self) }.joined(separator: ", ")
-            result += ": \(protocols)"
-        }
-        
-        result += " {\n"
-        
-        // Add properties
-        for property in decl.properties {
-            result += try property.accept(visitor: self) + "\n"
-        }
-        
-        // Add methods
-        for method in decl.methods {
-            result += try method.accept(visitor: self) + "\n"
-        }
-        
-        result += "}"
-        return result
-    }
-    
-    func visitEnumDecl(_ decl: EnumDecl) throws -> String {
-        var result = "enum \(decl.name.lexeme)"
-        
-        if let rawType = decl.rawType {
-            result += ": " + (try rawType.accept(visitor: self))
-        }
-        
-        result += " {\n"
-        
-        // Add cases
-        for enumCase in decl.cases {
-            result += "    case \(enumCase.name.lexeme)"
-            if let rawValue = enumCase.rawValue {
-                result += " = " + (try rawValue.accept(visitor: self))
-            }
-            result += "\n"
-        }
-        
-        // Add methods
-        for method in decl.methods {
-            result += try method.accept(visitor: self) + "\n"
-        }
-        
-        result += "}"
-        return result
-    }
-    
-    func visitInterfaceDecl(_ decl: InterfaceDecl) throws -> String {
-        var result = "protocol \(decl.name.lexeme)"
-        
-        if !decl.extendedInterfaces.isEmpty {
-            let protocols = try decl.extendedInterfaces.map { try $0.accept(visitor: self) }.joined(separator: ", ")
-            result += ": \(protocols)"
-        }
-        
-        result += " {\n"
-        
-        // Add method signatures
-        for method in decl.methods {
-            // For protocols, just include the signature without the body
-            let params = method.params.map { param -> String in
-                return "\(param.name.lexeme): " + "Type" // Add proper type handling
-            }.joined(separator: ", ")
-            
-            var methodResult = "func \(method.name.lexeme)(\(params))"
-            
-            if let returnType = method.returnType {
-                methodResult += " -> " + (try returnType.accept(visitor: self))
-            }
-            
-            result += "    \(methodResult)\n"
-        }
-        
-        result += "}"
-        return result
-    }
-    
-    // Type visitors
-    func visitNamedType(_ type: NamedType) throws -> String {
-        return type.name.lexeme
-    }
-    
-    func visitArrayType(_ type: ArrayType) throws -> String {
-        let elementType = try type.elementType.accept(visitor: self)
-        return "[\(elementType)]"
-    }
-    
-    func visitGenericType(_ type: GenericType) throws -> String {
-        let baseType = try type.baseType.accept(visitor: self)
-        let typeArgs = try type.typeArguments.map { try $0.accept(visitor: self) }.joined(separator: ", ")
-        return "\(baseType)<\(typeArgs)>"
+
+    func getLLVMDefinition(for key: String) -> String? {
+        llvmDefinitions[key]
     }
 }
 
-// JavaScript code generator placeholder
-class JavaScriptCodeGenerator: CodeGenerator {
-    typealias Result = String
-    
-    let targetLanguage: TargetLanguage = .javascript
-    
-    func generate(ast: [Decl]) throws -> String {
-        // Simplified implementation
-        return "// JavaScript generation not fully implemented yet"
-    }
-    
-    // Implement visitor methods (similar to SwiftCodeGenerator)
-    // ...
-    
-    func visitBinaryExpr(_ expr: BinaryExpr) throws -> String { return "" }
-    func visitGroupingExpr(_ expr: GroupingExpr) throws -> String { return "" }
-    func visitLiteralExpr(_ expr: LiteralExpr) throws -> String { return "" }
-    func visitUnaryExpr(_ expr: UnaryExpr) throws -> String { return "" }
-    func visitVariableExpr(_ expr: VariableExpr) throws -> String { return "" }
-    func visitCallExpr(_ expr: CallExpr) throws -> String { return "" }
-    func visitGetExpr(_ expr: GetExpr) throws -> String { return "" }
-    func visitSetExpr(_ expr: SetExpr) throws -> String { return "" }
-    func visitThisExpr(_ expr: ThisExpr) throws -> String { return "" }
-    func visitSuperExpr(_ expr: SuperExpr) throws -> String { return "" }
-    func visitArrayExpr(_ expr: ArrayExpr) throws -> String { return "" }
-    func visitIndexExpr(_ expr: IndexExpr) throws -> String { return "" }
-    func visitExpressionStmt(_ stmt: ExpressionStmt) throws -> String { return "" }
-    func visitBlockStmt(_ stmt: BlockStmt) throws -> String { return "" }
-    func visitIfStmt(_ stmt: IfStmt) throws -> String { return "" }
-    func visitWhileStmt(_ stmt: WhileStmt) throws -> String { return "" }
-    func visitForStmt(_ stmt: ForStmt) throws -> String { return "" }
-    func visitReturnStmt(_ stmt: ReturnStmt) throws -> String { return "" }
-    func visitBreakStmt(_ stmt: BreakStmt) throws -> String { return "" }
-    func visitContinueStmt(_ stmt: ContinueStmt) throws -> String { return "" }
-    func visitVarDecl(_ decl: VarDecl) throws -> String { return "" }
-    func visitFunctionDecl(_ decl: FunctionDecl) throws -> String { return "" }
-    func visitClassDecl(_ decl: ClassDecl) throws -> String { return "" }
-    func visitStructDecl(_ decl: StructDecl) throws -> String { return "" }
-    func visitEnumDecl(_ decl: EnumDecl) throws -> String { return "" }
-    func visitInterfaceDecl(_ decl: InterfaceDecl) throws -> String { return "" }
-    func visitNamedType(_ type: NamedType) throws -> String { return "" }
-    func visitArrayType(_ type: ArrayType) throws -> String { return "" }
-    func visitGenericType(_ type: GenericType) throws -> String { return "" }
-}
-
-// TypeScript code generator placeholder
-class TypeScriptCodeGenerator: CodeGenerator {
-    typealias Result = String
-    
-    let targetLanguage: TargetLanguage = .typescript
-    
-    func generate(ast: [Decl]) throws -> String {
-        // Simplified implementation
-        return "// TypeScript generation not fully implemented yet"
-    }
-    
-    // Implement visitor methods (similar to SwiftCodeGenerator)
-    // ...
-    
-    func visitBinaryExpr(_ expr: BinaryExpr) throws -> String { return "" }
-    func visitGroupingExpr(_ expr: GroupingExpr) throws -> String { return "" }
-    func visitLiteralExpr(_ expr: LiteralExpr) throws -> String { return "" }
-    func visitUnaryExpr(_ expr: UnaryExpr) throws -> String { return "" }
-    func visitVariableExpr(_ expr: VariableExpr) throws -> String { return "" }
-    func visitCallExpr(_ expr: CallExpr) throws -> String { return "" }
-    func visitGetExpr(_ expr: GetExpr) throws -> String { return "" }
-    func visitSetExpr(_ expr: SetExpr) throws -> String { return "" }
-    func visitThisExpr(_ expr: ThisExpr) throws -> String { return "" }
-    func visitSuperExpr(_ expr: SuperExpr) throws -> String { return "" }
-    func visitArrayExpr(_ expr: ArrayExpr) throws -> String { return "" }
-    func visitIndexExpr(_ expr: IndexExpr) throws -> String { return "" }
-    func visitExpressionStmt(_ stmt: ExpressionStmt) throws -> String { return "" }
-    func visitBlockStmt(_ stmt: BlockStmt) throws -> String { return "" }
-    func visitIfStmt(_ stmt: IfStmt) throws -> String { return "" }
-    func visitWhileStmt(_ stmt: WhileStmt) throws -> String { return "" }
-    func visitForStmt(_ stmt: ForStmt) throws -> String { return "" }
-    func visitReturnStmt(_ stmt: ReturnStmt) throws -> String { return "" }
-    func visitBreakStmt(_ stmt: BreakStmt) throws -> String { return "" }
-    func visitContinueStmt(_ stmt: ContinueStmt) throws -> String { return "" }
-    func visitVarDecl(_ decl: VarDecl) throws -> String { return "" }
-    func visitFunctionDecl(_ decl: FunctionDecl) throws -> String { return "" }
-    func visitClassDecl(_ decl: ClassDecl) throws -> String { return "" }
-    func visitStructDecl(_ decl: StructDecl) throws -> String { return "" }
-    func visitEnumDecl(_ decl: EnumDecl) throws -> String { return "" }
-    func visitInterfaceDecl(_ decl: InterfaceDecl) throws -> String { return "" }
-    func visitNamedType(_ type: NamedType) throws -> String { return "" }
-    func visitArrayType(_ type: ArrayType) throws -> String { return "" }
-    func visitGenericType(_ type: GenericType) throws -> String { return "" }
-}
-
-func createCodeGenerator(for language: TargetLanguage) -> CodeGenerator {
-    switch language {
-    case .swift:
-        return SwiftCodeGenerator()
-    case .javascript:
-        return JavaScriptCodeGenerator()
-    case .typescript:
-        return TypeScriptCodeGenerator()
-    }
-}
-
-func transpile(options: TranspilerOptions) throws {
-    // Set up verbose logging if requested
-    if options.verbose {
-        print("Transpiling \(options.sourceFile) to \(options.targetLanguage.rawValue)")
-    }
-    
-    // Read the source file
-    let sourceURL = URL(fileURLWithPath: options.sourceFile)
-    guard FileManager.default.fileExists(atPath: sourceURL.path) else {
-        throw TranspilerError.fileNotFound(options.sourceFile)
-    }
-    
-    let sourceCode: String
-    do {
-        sourceCode = try String(contentsOf: sourceURL, encoding: .utf8)
-    } catch {
-        throw TranspilerError.readError(error.localizedDescription)
-    }
-    
-    // Lex the source into tokens
-    let lexer = Lexer(source: sourceCode)
-    let tokens: [Token]
-    do {
-        tokens = try lexer.scanTokens()
-        if options.verbose {
-            print("Lexical analysis complete: \(tokens.count) tokens generated")
-        }
-    } catch let error as LexerError {
-        throw TranspilerError.lexError(error)
-    }
-    
-    // Parse the tokens into an AST
-    let parser = Parser(tokens: tokens)
-    let ast: [Decl]
-    do {
-        ast = try parser.parse()
-        if options.verbose {
-            print("Parsing complete: \(ast.count) top-level declarations found")
-        }
-    } catch let error as ParserError {
-        throw TranspilerError.parseError(error)
-    }
-    
-    // Generate code for the target language
-    let generator = createCodeGenerator(for: options.targetLanguage)
-    let generatedCode: String
-    do {
-        generatedCode = try generator.generate(ast: ast)
-        if options.verbose {
-            print("Code generation complete")
-        }
-    } catch {
-        throw TranspilerError.transpileError("Code generation failed: \(error)")
-    }
-    
-    // Write the output
-    let outputPath = options.outputFile ?? sourceURL.deletingPathExtension().appendingPathExtension(options.targetLanguage.fileExtension).path
-    
-    do {
-        try generatedCode.write(toFile: outputPath, atomically: true, encoding: .utf8)
-        if options.verbose {
-            print("Output written to: \(outputPath)")
-        }
-    } catch {
-        throw TranspilerError.outputError("Failed to write output: \(error)")
-    }
-    
-    // Generate source map if requested
-    if options.emitSourceMap {
-        if options.verbose {
-            print("Source map generation not yet implemented")
-        }
-    }
-    
-    print("Transpilation completed successfully")
-}
-
-// MARK: - Main Entry Point
-
-do {
-    let options = try parseArguments()
-    
-    if options.showVersion {
-        printVersion()
-        exit(0)
-    }
-    
-    if options.showHelp {
-        printHelp()
-        exit(0)
-    }
-    
-    try transpile(options: options)
-} catch {
-    print("\(error)")
-    exit(1)
-}
-
-// Example of optimizing transpiler with Swift concurrency
 public actor Transpiler {
+    private let printer: MLIRPrinter
+    private let webDefinitions: WebDefinitions
+    private let options: TranspilerOptions
+    private let logger: Logger
+
+    public init(options: TranspilerOptions) throws {
+        self.printer = MLIRPrinter()
+        self.webDefinitions = WebDefinitions()
+        self.options = options
+        self.logger = Logger(verbose: options.verbose)
+    }
+
+    public func addWebDefinition(key: String, value: String) {
+        webDefinitions.addDefinition(key: key, value: value)
+    }
+
+    public func addJavaDefinition(key: String, value: String) {
+        webDefinitions.addJavaDefinition(key: key, value: value)
+    }
+
+    public func addKotlinDefinition(key: String, value: String) {
+        webDefinitions.addKotlinDefinition(key: key, value: value)
+    }
+
+    public func addCDefinition(key: String, value: String) {
+        webDefinitions.addCDefinition(key: key, value: value)
+    }
+
+    public func addCppDefinition(key: String, value: String) {
+        webDefinitions.addCppDefinition(key: key, value: value)
+    }
+
+    public func addSwiftDefinition(key: String, value: String) {
+        webDefinitions.addSwiftDefinition(key: key, value: value)
+    }
+
+    public func addLLVMDefinition(key: String, value: String) {
+        webDefinitions.addLLVMDefinition(key: key, value: value)
+    }
+
+    public func getWebDefinition(for key: String) -> String? {
+        webDefinitions.getDefinition(for: key)
+    }
+
+    public func getJavaDefinition(for key: String) -> String? {
+        webDefinitions.getJavaDefinition(for: key)
+    }
+
+    public func getKotlinDefinition(for key: String) -> String? {
+        webDefinitions.getKotlinDefinition(for: key)
+    }
+
+    public func getCDefinition(for key: String) -> String? {
+        webDefinitions.getCDefinition(for: key)
+    }
+
+    public func getCppDefinition(for key: String) -> String? {
+        webDefinitions.getCppDefinition(for: key)
+    }
+
+    public func getSwiftDefinition(for key: String) -> String? {
+        webDefinitions.getSwiftDefinition(for: key)
+    }
+
+    public func getLLVMDefinition(for key: String) -> String? {
+        webDefinitions.getLLVMDefinition(for: key)
+    }
+
     public func transpile(source: String) async throws -> TranspiledOutput {
-        // Use structured concurrency for efficient transpilation
+        logger.log("Starting transpilation process...")
+
+        if options.useMLIR {
+            logger.log("Using MLIR backend")
+            return try await transpileWithMLIR(source: source)
+        }
+
+        if options.bidirectionalMode {
+            logger.log("Using bidirectional mode")
+            return try await transpileBidirectional(source: source)
+        }
+
+        logger.log("Using traditional transpilation path")
         async let parsed = parse(source)
         async let transformed = transform(parsed)
         return try await generateCode(from: transformed)
+    }
+
+    private func transpileBidirectional(source: String) async throws -> TranspiledOutput {
+        logger.log("Starting bidirectional transpilation...")
+
+        async let parsed = parse(source)
+        let ast = try await parsed
+
+        let javaGenerator = JavaCodeGenerator(webDefinitions: webDefinitions)
+        let kotlinGenerator = KotlinCodeGenerator(webDefinitions: webDefinitions)
+
+        var javaOutput = ""
+        var kotlinOutput = ""
+        var sourceMap = SourceMap()
+        var diagnostics: [Diagnostic] = []
+
+        for decl in ast {
+            do {
+                let (javaCode, javaMap) = try javaGenerator.generate(from: decl)
+                let (kotlinCode, kotlinMap) = try kotlinGenerator.generate(from: decl)
+
+                javaOutput += javaCode + "\n"
+                kotlinOutput += kotlinCode + "\n"
+                sourceMap.merge(javaMap)
+                sourceMap.merge(kotlinMap)
+            } catch let error as DiagnosticError {
+                diagnostics.append(error.diagnostic)
+                logger.error("Error during bidirectional transpilation: \(error.diagnostic.message)")
+            }
+        }
+
+        let combinedOutput = """
+        // Java Output
+        \(javaOutput)
+
+        // Kotlin Output
+        \(kotlinOutput)
+        """
+
+        logger.log("Bidirectional transpilation completed")
+        return TranspiledOutput(
+            code: combinedOutput,
+            sourceMap: sourceMap,
+            diagnostics: diagnostics
+        )
+    }
+
+    private func transpileWithMLIR(source: String) async throws -> TranspiledOutput {
+        // Parse source into AST
+        async let parsed = parse(source)
+        let ast = try await parsed
+
+        // Convert AST to MLIR using MLIRPrinter
+        var mlirOutput = ""
+        for decl in ast {
+            mlirOutput += try decl.accept(visitor: printer) + "\n"
+        }
+
+        if options.verbose {
+            print("Generated MLIR:")
+            print(mlirOutput)
+        }
+
+        return TranspiledOutput(
+            code: mlirOutput,
+            sourceMap: nil,
+            diagnostics: []
+        )
+    }
+}
+
+// Implementation of the transpiler's core functionality with multiple target languages
+extension Transpiler {
+    private func parse(_ source: String) async throws -> [Declaration] {
+        let tokens = try Lexer(source: source).scanTokens()
+        return try Parser(tokens: tokens).parse()
+    }
+
+    private func transform(_ ast: [Declaration]) async throws -> [Declaration] {
+        var transformed = ast
+
+        // Apply transformations in sequence
+        transformed = try await SemanticAnalyzer().analyze(transformed)
+        transformed = try await TypeChecker().check(transformed)
+        transformed = try await Optimizer().optimize(transformed)
+
+        return transformed
+    }
+
+    private func generateCode(from ast: [Declaration]) async throws -> TranspiledOutput {
+        let generator: CodeGenerator
+        switch options.targetLanguage {
+        case .java:
+            generator = JavaCodeGenerator(webDefinitions: webDefinitions)
+        case .kotlin:
+            generator = KotlinCodeGenerator(webDefinitions: webDefinitions)
+        case .c:
+            generator = CCodeGenerator(webDefinitions: webDefinitions)
+        case .cpp:
+            generator = CppCodeGenerator(webDefinitions: webDefinitions)
+        case .swift:
+            generator = SwiftCodeGenerator(webDefinitions: webDefinitions)
+        case .mlir:
+            generator = MLIRCodeGenerator(webDefinitions: webDefinitions)
+        case .llvm:
+            generator = LLVMCodeGenerator(webDefinitions: webDefinitions)
+        }
+
+        var output = ""
+        var sourceMap = SourceMap()
+        var diagnostics: [Diagnostic] = []
+
+        // Generate code for each declaration
+        for decl in ast {
+            do {
+                let (code, map) = try generator.generate(from: decl)
+                output += code + "\n"
+                sourceMap.merge(map)
+            } catch let error as DiagnosticError {
+                diagnostics.append(error.diagnostic)
+            }
+        }
+
+        return TranspiledOutput(
+            code: output,
+            sourceMap: sourceMap,
+            diagnostics: diagnostics
+        )
+    }
+}
+
+// Target language options
+enum TargetLanguage: String {
+    case java
+    case kotlin
+    case c
+    case cpp
+    case swift
+    case mlir
+    case llvm
+}
+
+// Code generator protocol
+protocol CodeGenerator {
+    var webDefinitions: WebDefinitions { get }
+    func generate(from decl: Declaration) throws -> (String, SourceMap)
+}
+
+// Concrete code generators for each target
+struct CCodeGenerator: CodeGenerator {
+    let webDefinitions: WebDefinitions
+    func generate(from decl: Declaration) throws -> (String, SourceMap) {
+        // Implement C code generation
+        fatalError("C code generation not implemented")
+    }
+}
+
+struct CppCodeGenerator: CodeGenerator {
+    let webDefinitions: WebDefinitions
+    func generate(from decl: Declaration) throws -> (String, SourceMap) {
+        // Implement C++ code generation
+        fatalError("C++ code generation not implemented")
+    }
+}
+
+struct SwiftCodeGenerator: CodeGenerator {
+    let webDefinitions: WebDefinitions
+    func generate(from decl: Declaration) throws -> (String, SourceMap) {
+        // Implement Swift code generation
+        fatalError("Swift code generation not implemented")
+    }
+}
+
+struct MLIRCodeGenerator: CodeGenerator {
+    let webDefinitions: WebDefinitions
+    func generate(from decl: Declaration) throws -> (String, SourceMap) {
+        // Implement MLIR code generation
+        fatalError("MLIR code generation not implemented")
+    }
+}
+
+struct LLVMCodeGenerator: CodeGenerator {
+    let webDefinitions: WebDefinitions
+    func generate(from decl: Declaration) throws -> (String, SourceMap) {
+        // Implement LLVM IR code generation
+        fatalError("LLVM code generation not implemented")
+    }
+}
+
+// Error types and supporting structures
+struct DiagnosticError: Error {
+    let diagnostic: Diagnostic
+}
+
+struct Diagnostic {
+    let message: String
+    let severity: DiagnosticSeverity
+    let location: SourceLocation?
+}
+
+enum DiagnosticSeverity {
+    case error
+    case warning
+    case info
+}
+
+struct SourceLocation {
+    let line: Int
+    let column: Int
+    let file: String
+}
+
+struct SourceMap {
+    private var mappings: [String: SourceLocation] = [:]
+
+    mutating func addMapping(generated: String, original: SourceLocation) {
+        mappings[generated] = original
+    }
+
+    mutating func merge(_ other: SourceMap) {
+        mappings.merge(other.mappings) { current, _ in current }
+    }
+}
+
+struct TranspiledOutput {
+    let code: String
+    let sourceMap: SourceMap?
+    let diagnostics: [Diagnostic]
+}
+
+@main
+struct Main {
+    static func main() async {
+        let arguments = CommandLine.arguments
+
+        // Print version and help
+        func printUsage() {
+            print("""
+            OuroTranspiler v\(version)
+            Usage: ourotranspiler [options] <input-file>
+            Options:
+              --target <lang>      Target language (swift, java, kotlin, c, cpp, mlir, llvm)
+              --output <file>      Output file (default: stdout)
+              --mlir               Use MLIR backend
+              --bidirectional      Enable bidirectional mode (Java/Kotlin)
+              --verbose            Enable verbose output
+              --help               Show this help message
+              --version            Show version
+            """)
+        }
+
+        // Parse command line arguments
+        var inputFile: String?
+        var outputFile: String?
+        var targetLanguage: String = "swift"
+        var useMLIR = false
+        var bidirectionalMode = false
+        var verbose = false
+
+        var i = 1
+        while i < arguments.count {
+            let arg = arguments[i]
+            switch arg {
+            case "--help", "-h":
+                printUsage()
+                return
+            case "--version":
+                print("OuroTranspiler v\(version)")
+                return
+            case "--output":
+                if i + 1 < arguments.count {
+                    outputFile = arguments[i + 1]
+                    i += 1
+                } else {
+                    print("Missing value for --output")
+                    return
+                }
+            case "--target":
+                if i + 1 < arguments.count {
+                    targetLanguage = arguments[i + 1].lowercased()
+                    i += 1
+                } else {
+                    print("Missing value for --target")
+                    return
+                }
+            case "--mlir":
+                useMLIR = true
+            case "--bidirectional":
+                bidirectionalMode = true
+            case "--verbose":
+                verbose = true
+            default:
+                if arg.hasPrefix("-") {
+                    print("Unknown option: \(arg)")
+                    printUsage()
+                    return
+                } else {
+                    inputFile = arg
+                }
+            }
+            i += 1
+        }
+
+        guard let inputFile else {
+            print("Error: No input file specified")
+            printUsage()
+            return
+        }
+
+        // Read input file
+        let source: String
+        do {
+            source = try String(contentsOfFile: inputFile, encoding: .utf8)
+        } catch {
+            print("Error reading file: \(inputFile)")
+            return
+        }
+
+        // Set up transpiler options
+        let options = TranspilerOptions(
+            targetLanguage: TargetLanguage(rawValue: targetLanguage) ?? .swift,
+            useMLIR: useMLIR,
+            bidirectionalMode: bidirectionalMode,
+            verbose: verbose
+        )
+
+        let transpiler: Transpiler
+        do {
+            transpiler = try Transpiler(options: options)
+        } catch {
+            print("Failed to initialize transpiler: \(error)")
+            exit(1)
+        }
+
+        // Run transpilation
+        do {
+            let output = try await transpiler.transpile(source: source)
+            if let outputFile {
+                do {
+                    try output.code.write(toFile: outputFile, atomically: true, encoding: .utf8)
+                    if verbose {
+                        print("Wrote output to \(outputFile)")
+                    }
+                } catch {
+                    print("Error writing to output file: \(outputFile)")
+                }
+            } else {
+                print(output.code)
+            }
+
+            if !output.diagnostics.isEmpty {
+                for diag in output.diagnostics {
+                    let loc = diag.location.map { "\($0.file):\($0.line):\($0.column): " } ?? ""
+                    print("[\(diag.severity)] \(loc)\(diag.message)")
+                }
+            }
+        } catch let error as TranspilerError {
+            print(error.description)
+            exit(1)
+        } catch {
+            print("Unexpected error: \(error)")
+            exit(1)
+        }
     }
 }

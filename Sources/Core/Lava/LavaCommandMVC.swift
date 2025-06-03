@@ -1,7 +1,7 @@
-
 import Foundation
 import Observation
 import Synchronization
+import LavaWeb
 
 /// LavaCommandMVC - Implementation of Command pattern and Spring MVC-like framework
 /// Provides robust command execution with undo/redo support and a web application framework

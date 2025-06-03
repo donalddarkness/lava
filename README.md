@@ -1,4 +1,5 @@
 # OuroLang
+[![CI Pipeline](https://github.com/yourusername/lava/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/lava/actions/workflows/ci.yml)
 
 OuroLang is a modern programming language designed for computational graphics, AI-driven visualizations, and high-performance applications with an elegant, expressive syntax.
 
@@ -24,17 +25,17 @@ Key features:
 ```
 lava/
 ├── Sources/
-│   ├── OuroLangCore/       # Core compiler components
-│   │   ├── Lexer.swift     # Lexical analysis
-│   │   ├── Token.swift     # Token definitions
-│   │   ├── AST.swift       # Abstract Syntax Tree
-│   │   └── Parser.swift    # Syntax analysis
-│   ├── OuroCompiler/       # Compiler executable
-│   ├── OuroTranspiler/     # Source-to-source translator
-│   └── OuroLangLSP/        # Language Server Protocol implementation
-├── Tests/
-│   └── OuroLangCoreTests/  # Unit tests for compiler components
-└── docs/                   # Documentation
+│   ├── Lava/              # Core DSL implementation
+│   ├── LavaDemo/          # Demo application
+│   ├── OuroLangCore/      # Core compiler components
+│   ├── OuroCompiler/      # Compiler executable
+│   ├── OuroTranspiler/    # Source-to-source translator
+│   ├── OuroLangLSP/       # Language Server Protocol for .ouro files
+│   ├── LavaLSP/           # Language Server Protocol for .lava DSL files
+│   └── CombinedLSP/       # Combined LSP handling both .ouro and .lava
+│   ├── Tests/
+│   │   └── OuroLangCoreTests/  # Unit tests for compiler components
+│   └── docs/                   # Documentation
 ```
 
 ## Getting Started
@@ -96,6 +97,21 @@ Use with your favorite editor through the Language Server:
 
 ```bash
 swift run OuroLangLSP
+```
+
+## Usage (Language Server)
+
+Use the language server implementation for editor integrations:
+
+```bash
+# Run the OuroLang-only LSP server
+swift run OuroLSP
+
+# Run the Lava DSL-only LSP server
+swift run LavaLSP
+
+# Run the combined LSP server (handles both .ouro and .lava files)
+swift run CombinedLSP
 ```
 
 ## Language Examples
@@ -259,3 +275,9 @@ This project uses GitHub Actions to:
 - Run on pushes and pull requests against `main`.
 - Build and test on both macOS and Ubuntu using Swift 6.1.
 - Run SwiftLint in strict mode on macOS.
+
+## Documentation
+
+The API reference and tutorials are automatically generated using DocC and published via GitHub Pages:
+
+[https://yourusername.github.io/lava](https://yourusername.github.io/lava)

@@ -1,5 +1,17 @@
 # OuroLang Syntax Documentation
 
+## Table of Contents
+- [Introduction](#introduction)
+- [Basic Elements](#basic-elements)
+- [Inheritance](#inheritance)
+- [Data Types](#data-types)
+- [Operators](#operators)
+- [Control Flow](#control-flow)
+- [Comments](#comments)
+- [Examples](#examples)
+- [Naming Conventions](#naming-conventions)
+- [Advanced Features](#advanced-features)
+
 ## Introduction
 
 Welcome to the syntax documentation for Ouro! This document aims to provide a clear and concise overview of the language's grammar and structure. By understanding these rules, you will be able to write valid and functional programs in Ouro.

@@ -112,53 +112,24 @@ public enum TokenType: Equatable, Hashable, CaseIterable, Sendable {
 
     // MARK: - Keywords
     // Types & Declarations
-    case `class`
-    case `struct`
-    case `enum`
-    case `interface`
-    case `var`
-    case `const` // or `let` if Ouro prefers
-    case `func` // or `def`, `method`
-    case `init`
-    case `extension`
-    case `typealias`
-    case `protocol` // if Ouro uses this term for interfaces
-
-    // Control Flow
-    case `if`, `else`
-    case `switch`, `case`, `default`
-    case `for`, `in`
-    case `while`, `do` // `do-while` might need separate handling or be `repeat-while`
-    case `break`, `continue`
-    case `return`
+    case `class`, `struct`, `enum`, `interface`
+    case `var`, `const`, `func`, `init`
+    case `extension`, `typealias`, `protocol`
+    case `if`, `else`, `switch`, `case`, `default`
+    case `for`, `in`, `while`, `do`
+    case `break`, `continue`, `return`
     case `throw`, `throws`, `rethrows`
     case `try`, `catch`, `finally`
-
-    // Boolean & Null
-    case `true`, `false`
-    case `null` // or `nil`
-
-    // Access Modifiers & Other Modifiers
+    case `true`, `false`, `null`
     case `public`, `private`, `protected`, `internal`, `fileprivate`
-    case `static`
-    case `final`
-    case `abstract` // if applicable
-    case `sealed`   // if applicable
-    case `override`
-    case `lazy`
-    case `async`, `await`
-    case `get`, `set`, `willSet`, `didSet` // For properties
-
-    // Operators as keywords (if any, e.g., 'is', 'as')
-    case `is`, `as` // `as?`, `as!` might be handled by `as` + `?` or `!` tokens
-
-    // Inheritance & Implementation
-    case `extends`
-    case `implements`
-    case `super`, `this` // `this` might be `self`
-
-    // Modules & Imports
+    case `static`, `final`, `abstract`, `sealed`
+    case `override`, `lazy`, `async`, `await`
+    case `get`, `set`, `willSet`, `didSet`
+    case `is`, `as`
+    case `extends`, `implements`
+    case `super`, `this`
     case `import`, `package`, `module`
+    case `yield`, `defer` // New keywords added
 
     // MARK: - Special
     case eof // End Of File

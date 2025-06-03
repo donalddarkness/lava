@@ -52,5 +52,33 @@ In the Ubuntu shell:
 
 ## Step 5: VS Code Remote – WSL Integration (Optional)
 1. Install **Remote – WSL** extension in VS Code.  
-2. In VS Code, click the green “><” icon and choose **New WSL Window**.  
+2. In VS Code, click the green "><" icon and choose **New WSL Window**.  
 3. Open the Lava project folder within WSL for seamless Linux tooling and debugging.
+
+## Cleaning & Rebuilding the Lava Workspace
+
+To automate build cleanup and dependency cache clearing, two scripts are provided in the `scripts/` directory:
+
+- **Windows PowerShell**: `scripts/clean-build.ps1`
+- **Unix/WSL Bash**: `scripts/clean-build.sh`
+
+### Usage
+
+1. Open a terminal in the project root (`D:\Projects\lava`).
+2. On Windows PowerShell:
+   ```powershell
+   ./scripts/clean-build.ps1
+   ```
+3. On WSL or macOS/Linux:
+   ```bash
+   chmod +x scripts/clean-build.sh
+   ./scripts/clean-build.sh
+   ```
+
+These scripts will:
+- Terminate any running Swift and SourceKit processes (to release locked index files).  
+- Remove the workspace's `.build` directory.  
+- Clear the global SwiftPM cache (`~/.swiftpm`).  
+- Rebuild the project in debug configuration (`swift build -c debug`).  
+
+This ensures a fresh build and resolves stale lock or index database errors as described in the troubleshooting section above.

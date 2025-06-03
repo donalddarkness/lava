@@ -87,7 +87,7 @@
         private lazy var classRegex = #regex("class\\s+([A-Za-z0-9_]+)")
         private lazy var methodRegex = #regex("func\\s+([A-Za-z0-9_]+)")
         private lazy var variableRegex = #regex("(var|let)\\s+([A-Za-z0-9_]+)(?::\\s*([A-Za-z0-9_<>`[\]?\!]+))?")
-        private lazy var stringLiteralRegex = #regex("\"(?:[^\"\\\\]|\\\\.)*\""")
+        private lazy var stringLiteralRegex = #regex("\\\"(?:[^\"\\\\]|\\\\.)*\\\"")
         private lazy var commentRegex = #regex("(/\\*[^*]*\\*+(?:[^/*][^*]*\\*+)*/|//.*$)", options: [.anchorsMatchLines])
 
         // Server settings model
@@ -161,8 +161,24 @@
             private var dictionary: [K: V] = [:]
             private let queue = DispatchQueue(label: "com.lava.lsp.threadsafedictionary", attributes: .concurrent)
 
-            public func value(forKey key:combine(range.upperBound)
-                hasher.combine(type)
+            public func value(forKey key: K) -> V? {
+                var result: V?
+                queue.sync {
+                    result = dictionary[key]
+                }
+                return result
+            }
+
+            public func setValue(_ value: V, forKey key: K) {
+                queue.async(flags: .barrier) {
+                    self.dictionary[key] = value
+                }
+            }
+
+            public func removeValue(forKey key: K) {
+                queue.async(flags: .barrier) {
+                    self.dictionary.removeValue(forKey: key)
+                }
             }
         }
 
@@ -212,13 +228,24 @@
 
             return ranges
         }
+
+        func handleInitialize(_ message: [String: Any]) -> [String: Any] {
+            // Implement textDocument/initialize
+            return [:]
+        }
+
+        func handleCompletion(_ message: [String: Any]) -> [String: Any] {
+            // Implement textDocument/completion
+            return [:]
+        }
+
+        func handleHover(_ message: [String: Any]) -> [String: Any] {
+            // Implement textDocument/hover
+            return [:]
+        }
+
+        private func sendDiagnostics(uri: String, diagnostics: [[String: Any]]) {
+            // Implement proper diagnostics with range mapping and severity levels
+        }
     }
 }
-// Constants for LSP symbol kinds with proper enum structure
-@Final
-public enum SymbolKind: Int, Codable, CaseIterable, Sendable {
-    case file = 1, module = 2, namespace = 3, package = 4, class_ = 5, method = 6,
-         property = 7, field = 8, constructor = 9, enum_ = 10, interface = 11,
-         function = 12, variable = 13, constant = 14, string
- = 15, number = 16,
-         boolean = 17, array = 18, object = 19, key = 20,

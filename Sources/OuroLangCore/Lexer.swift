@@ -130,7 +130,8 @@ public class Lexer {
         "is": .is, "as": .as,
         "extends": .extends, "implements": .implements,
         "super": .super, "this": .this, // or "self"
-        "import": .import, "package": .package, "module": .module
+        "import": .import, "package": .package, "module": .module,
+        "yield": .yield, "defer": .defer // New keywords added
         // Add all keywords from OuroLang Syntax Documentation
     ]
 

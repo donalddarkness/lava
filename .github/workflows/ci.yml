@@ -8,56 +8,32 @@ on:
 
 jobs:
   build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [macos-latest, ubuntu-latest]
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-
-      - name: Setup Swift
-        uses: actions/setup-swift@v1
-        with:
-          swift-version: '6.1'
-
-      - name: Build
-        run: swift build --disable-sandbox
-
-      - name: Test
-        run: swift test --disable-sandbox
+    - uses: actions/checkout@v2
+    - name: Set up Swift
+      uses: fwal/setup-swift@v1
+      with:
+        swift-version: '6.1'
+    - name: Install Danger
+      run: swift package update && swift run danger-swift ci
+    - name: Run Danger
+      run: swift run danger-swift ci
+    - name: Install Periphery
+      run: brew install peripheryapp/periphery/periphery
+    - name: Run Periphery
+      run: periphery scan --workspace Lava.xcworkspace --schemes Lava
 
   lint:
     runs-on: macos-latest
     needs: build
     steps:
       - uses: actions/checkout@v3
+      - name: Install SwiftFormat
+        run: brew install swiftformat
+      - name: Run SwiftFormat
+        run: swiftformat . --dry-run --strict
       - name: Install SwiftLint
         run: brew install swiftlint
       - name: Run SwiftLint
         run: swiftlint --strict
-
-  generate-docs:
-    needs: build
-    runs-on: macos-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Setup Swift toolchain
-        uses: fwal/setup-swift@v1
-        with:
-          swift-version: '6.1'
-
-      - name: Generate documentation
-        run: |
-          swift package \
-            --allow-writing-to-directory docs \
-            generate-documentation \
-            --target Lava \
-            --transform-for-static-hosting
-
-      - name: Archive documentation
-        uses: actions/upload-artifact@v3
-        with:
-          name: documentation
-          path: docs

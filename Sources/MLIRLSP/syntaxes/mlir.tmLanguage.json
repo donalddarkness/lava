@@ -1,0 +1,97 @@
+{
+    "name": "MLIR",
+    "scopeName": "source.mlir",
+    "fileTypes": ["mlir"],
+    "patterns": [
+        {
+            "include": "#comments"
+        },
+        {
+            "include": "#keywords"
+        },
+        {
+            "include": "#types"
+        },
+        {
+            "include": "#operations"
+        },
+        {
+            "include": "#attributes"
+        },
+        {
+            "include": "#strings"
+        }
+    ],
+    "repository": {
+        "comments": {
+            "patterns": [
+                {
+                    "name": "comment.line.double-slash.mlir",
+                    "match": "//.*$"
+                },
+                {
+                    "name": "comment.block.mlir",
+                    "begin": "/\\*",
+                    "end": "\\*/",
+                    "patterns": [
+                        {
+                            "name": "comment.block.mlir",
+                            "match": "."
+                        }
+                    ]
+                }
+            ]
+        },
+        "keywords": {
+            "patterns": [
+                {
+                    "name": "keyword.control.mlir",
+                    "match": "\\b(func|module|return)\\b"
+                }
+            ]
+        },
+        "types": {
+            "patterns": [
+                {
+                    "name": "storage.type.mlir",
+                    "match": "\\b(i[0-9]+|f[0-9]+|index|memref|tensor|vector)\\b"
+                }
+            ]
+        },
+        "operations": {
+            "patterns": [
+                {
+                    "name": "support.function.mlir",
+                    "match": "\\b(arith\\.(addi|subi|muli|divi)|std\\.(constant|return))\\b"
+                }
+            ]
+        },
+        "attributes": {
+            "patterns": [
+                {
+                    "name": "constant.numeric.mlir",
+                    "match": "\\b[0-9]+\\b"
+                },
+                {
+                    "name": "constant.numeric.float.mlir",
+                    "match": "\\b[0-9]+\\.[0-9]+\\b"
+                }
+            ]
+        },
+        "strings": {
+            "patterns": [
+                {
+                    "name": "string.quoted.double.mlir",
+                    "begin": "\"",
+                    "end": "\"",
+                    "patterns": [
+                        {
+                            "name": "constant.character.escape.mlir",
+                            "match": "\\\\."
+                        }
+                    ]
+                }
+            ]
+        }
+    }
+} 

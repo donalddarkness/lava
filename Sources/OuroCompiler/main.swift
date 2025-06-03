@@ -108,7 +108,7 @@ func printHelp() {
     Options:
       -o, --output <file>    Specify output file (default: based on input file)
       -t, --target <target>  Specify compilation target (default: llvm)
-                            Supported targets: llvm, js, swift
+                            Supported targets: llvm, js, swift, mlir
       -O0, -O1, -O2, -O3    Set optimization level (default: -O0)
       -v, --verbose         Enable verbose output
       -h, --help            Display this help message
@@ -192,6 +192,8 @@ func compile(options: CompilerOptions) throws {
         generator = JSCodeGenerator()
     case "swift":
         generator = SwiftCodeGenerator()
+    case "mlir":
+        generator = MLIRCodeGenerator()
     default:
         throw CompilerError.compileError("Unsupported target: \(options.target)")
     }
@@ -221,6 +223,7 @@ func targetExtension(for target: String) -> String {
     case "llvm": return "bc"
     case "js": return "js"
     case "swift": return "swift"
+    case "mlir": return "mlir"
     default: return "out"
     }
 }

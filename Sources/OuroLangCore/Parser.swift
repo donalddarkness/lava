@@ -247,6 +247,14 @@ public class Parser {
             return try parseBlockStatement()
         }
         
+        if match(.yield) {
+            return try parseYieldStatement()
+        }
+
+        if match(.defer) {
+            return try parseDeferStatement()
+        }
+        
         // If it's not a specific statement type, it's an expression statement
         return try parseExpressionStatement()
     }
@@ -355,6 +363,27 @@ public class Parser {
         let keyword = previous()
         try consume(.semicolon, "Expected ';' after continue.")
         return ContinueStmt(keyword: keyword, line: keyword.line, column: keyword.column)
+    }
+    
+    /// Parses a yield statement.
+    private func parseYieldStatement() throws -> YieldStmt {
+        let keyword = previous()
+        var value: Expr? = nil
+
+        if !check(.semicolon) {
+            value = try parseExpression()
+        }
+
+        try consume(.semicolon, "Expected ';' after yield value.")
+
+        return YieldStmt(keyword: keyword, value: value, line: keyword.line, column: keyword.column)
+    }
+
+    /// Parses a defer statement.
+    private func parseDeferStatement() throws -> DeferStmt {
+        let keyword = previous()
+        let body = try parseBlockStatement()
+        return DeferStmt(keyword: keyword, body: body, line: keyword.line, column: keyword.column)
     }
     
     /// Parses an expression statement.

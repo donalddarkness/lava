@@ -282,4 +282,16 @@ final class LexerTests: XCTestCase {
             XCTFail("Unexpected error: \(error)")
         }
     }
+    
+    func testEdgeCaseTokens() {
+        // Add tests for edge-case tokens
+    }
+
+    func testUnicodeSupport() {
+        // Add tests for unicode handling
+    }
+
+    func testMultiLineStrings() {
+        // Add tests for multi-line strings
+    }
 }

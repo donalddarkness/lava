@@ -10,8 +10,10 @@ public protocol CodeGenerator {
 public class LLVMCodeGenerator: CodeGenerator {
     public init() {}
     public func emit(_ decls: [Decl]) throws -> String {
-        // TODO: generate LLVM IR
-        return ";; LLVM IR code generation not yet implemented"
+        // LLVM IR generation is not yet implemented; return informative placeholder
+        var header = "; ModuleID = 'module'\n"
+        header += "; LLVM IR code generation is not yet implemented\n"
+        return header
     }
 }
 
@@ -19,8 +21,16 @@ public class LLVMCodeGenerator: CodeGenerator {
 public class JSCodeGenerator: CodeGenerator {
     public init() {}
     public func emit(_ decls: [Decl]) throws -> String {
-        // TODO: generate JavaScript code
-        return "// JavaScript code generation not yet implemented"
+        // Generate intermediate code using ASTPrinter then transform to JS-like syntax
+        let printer = ASTPrinter()
+        var code = ""
+        for decl in decls {
+            code += try decl.accept(visitor: printer)
+            code += "\n"
+        }
+        // Simple transform: replace Swift 'func' with JS 'function'
+        let jsCode = code.replacingOccurrences(of: "func ", with: "function ")
+        return jsCode
     }
 }
 
@@ -28,7 +38,29 @@ public class JSCodeGenerator: CodeGenerator {
 public class SwiftCodeGenerator: CodeGenerator {
     public init() {}
     public func emit(_ decls: [Decl]) throws -> String {
-        // TODO: generate Swift source
-        return "// Swift code generation not yet implemented"
+        // Use ASTPrinter to reconstruct Swift source
+        let printer = ASTPrinter()
+        var code = ""
+        for decl in decls {
+            code += try decl.accept(visitor: printer)
+            code += "\n"
+        }
+        return code
+    }
+}
+
+/// MLIR code generator using AST-based printer
+public class MLIRCodeGenerator: CodeGenerator {
+    public init() {}
+
+    public func emit(_ decls: [Decl]) throws -> String {
+        let printer = MLIRPrinter()
+        var code = "module {\n"
+        for decl in decls {
+            code += try decl.accept(visitor: printer)
+            code += "\n"
+        }
+        code += "}\n"
+        return code
     }
 } 

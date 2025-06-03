@@ -35,6 +35,16 @@ let package = Package(
             name: "OuroLSP",
             targets: ["OuroLangLSP"]
         ),
+        // Combined LSP server for both .ouro (and future .lava) files
+        .executable(
+            name: "CombinedLSP",
+            targets: ["CombinedLSP"]
+        ),
+        // MLIRSwift library wrapping the MLIR C API
+        .library(
+            name: "MLIRSwift",
+            targets: ["MLIRSwift"]
+        ),
     ],
     dependencies: [
         // SwiftSyntax for macros and modern Swift features
@@ -124,6 +134,34 @@ let package = Package(
             dependencies: ["OuroLangCore"]
         ),
 
+        // Language Server Protocol implementation for Lava DSL
+        .executableTarget(
+            name: "LavaLSP",
+            dependencies: ["Lava"]
+        ),
+
+        // Combined LSP target routing .ouro and .lava documents
+        .executableTarget(
+            name: "CombinedLSP",
+            dependencies: ["OuroLangLSP", "LavaLSP"]
+        ),
+
+        // MLIR C API system library target and Swift wrapper
+        .systemLibrary(
+            name: "CMLIR",
+            path: "cmlir"
+        ),
+        .target(
+            name: "MLIRSwift",
+            dependencies: ["CMLIR"],
+            path: "Sources/MLIRSwift"
+        ),
+        .executableTarget(
+            name: "MyMLIRApp",
+            dependencies: ["MLIRSwift"],
+            path: "Sources/MyMLIRApp"
+        ),
+
         // Test targets with improved organization
         .testTarget(
             name: "LavaExtensionsTests",
@@ -145,11 +183,22 @@ let package = Package(
             name: "OuroLangCoreTests",
             dependencies: ["OuroLangCore"]
         ),
+        // Unit tests for LavaLanguageServer
+        .testTarget(
+            name: "LavaLSPTests",
+            dependencies: ["LavaLSP"]
+        ),
         // Local stub plugin for documentation generation
         .plugin(
             name: "SwiftDocCStub",
             capability: .command(
                 intent: .documentationGeneration()
             )
-        )
+        ),
+        // MLIR-based compiler for OuroLang
+        .executableTarget(
+            name: "OuroLangMLIR",
+            dependencies: ["OuroLangCore", "MLIRSwift"],
+            path: "Sources/OuroLangMLIR"
+        ),
     ])

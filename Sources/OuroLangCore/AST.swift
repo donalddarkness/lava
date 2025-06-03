@@ -106,6 +106,8 @@ public protocol ASTVisitor {
     func visitReturnStmt(_ stmt: ReturnStmt) throws -> Result
     func visitBreakStmt(_ stmt: BreakStmt) throws -> Result
     func visitContinueStmt(_ stmt: ContinueStmt) throws -> Result
+    func visitYieldStmt(_ stmt: YieldStmt) throws -> Result
+    func visitDeferStmt(_ stmt: DeferStmt) throws -> Result
     
     // Declarations
     func visitVarDecl(_ decl: VarDecl) throws -> Result
@@ -438,6 +440,38 @@ public class ContinueStmt: Stmt {
     
     public override func accept<V: ASTVisitor>(visitor: V) throws -> V.Result {
         return try visitor.visitContinueStmt(self)
+    }
+}
+
+/// Yield statement
+public class YieldStmt: Stmt {
+    public let keyword: Token
+    public let value: Expr?
+    
+    public init(keyword: Token, value: Expr?, line: Int, column: Int) {
+        self.keyword = keyword
+        self.value = value
+        super.init(line: line, column: column)
+    }
+    
+    public override func accept<V: ASTVisitor>(visitor: V) throws -> V.Result {
+        return try visitor.visitYieldStmt(self)
+    }
+}
+
+/// Defer statement
+public class DeferStmt: Stmt {
+    public let keyword: Token
+    public let body: BlockStmt
+    
+    public init(keyword: Token, body: BlockStmt, line: Int, column: Int) {
+        self.keyword = keyword
+        self.body = body
+        super.init(line: line, column: column)
+    }
+    
+    public override func accept<V: ASTVisitor>(visitor: V) throws -> V.Result {
+        return try visitor.visitDeferStmt(self)
     }
 }
 
