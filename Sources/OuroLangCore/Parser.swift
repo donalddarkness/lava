@@ -89,32 +89,115 @@ public class Parser {
     
     /// Parses a class declaration.
     private func parseClassDeclaration() throws -> ClassDecl {
-        // Placeholder implementation - replace with actual parsing logic
-        throw ParserError.invalidStatement("Class declaration parsing not yet implemented", line: peek().line, column: peek().column)
+        let name = try consume(.identifier, "Expected class name.")
+        // inheritance and interfaces
+        var superclass: TypeNode? = nil
+        var interfaces: [TypeNode] = []
+        if match(.colon) {
+            superclass = try parseType()
+            while match(.comma) {
+                interfaces.append(try parseType())
+            }
+        }
+        try consume(.leftBrace, "Expected '{' before class body.")
+        var methods: [FunctionDecl] = []
+        var properties: [VarDecl] = []
+        while !check(.rightBrace) && !isAtEnd() {
+            if match(.var) {
+                properties.append(try parseVarDeclaration())
+            } else if match(.func) {
+                methods.append(try parseFunctionDeclaration())
+            } else {
+                _ = try parseStatement()
+            }
+        }
+        try consume(.rightBrace, "Expected '}' after class body.")
+        return ClassDecl(name: name, superclass: superclass, interfaces: interfaces, methods: methods, properties: properties, line: name.line, column: name.column)
     }
     
     /// Parses a struct declaration.
     private func parseStructDeclaration() throws -> StructDecl {
-        // Placeholder implementation - replace with actual parsing logic
-        throw ParserError.invalidStatement("Struct declaration parsing not yet implemented", line: peek().line, column: peek().column)
+        let name = try consume(.identifier, "Expected struct name.")
+        var interfaces: [TypeNode] = []
+        if match(.colon) {
+            repeat { interfaces.append(try parseType()) } while match(.comma)
+        }
+        try consume(.leftBrace, "Expected '{' before struct body.")
+        var methods: [FunctionDecl] = []
+        var properties: [VarDecl] = []
+        while !check(.rightBrace) && !isAtEnd() {
+            if match(.var) { properties.append(try parseVarDeclaration()) }
+            else if match(.func) { methods.append(try parseFunctionDeclaration()) }
+            else { _ = try parseStatement() }
+        }
+        try consume(.rightBrace, "Expected '}' after struct body.")
+        return StructDecl(name: name, interfaces: interfaces, methods: methods, properties: properties, line: name.line, column: name.column)
     }
     
     /// Parses an enum declaration.
     private func parseEnumDeclaration() throws -> EnumDecl {
-        // Placeholder implementation - replace with actual parsing logic
-        throw ParserError.invalidStatement("Enum declaration parsing not yet implemented", line: peek().line, column: peek().column)
+        let name = try consume(.identifier, "Expected enum name.")
+        var rawType: TypeNode? = nil
+        if match(.colon) { rawType = try parseType() }
+        try consume(.leftBrace, "Expected '{' before enum body.")
+        var cases: [EnumCase] = []
+        var methods: [FunctionDecl] = []
+        while !check(.rightBrace) && !isAtEnd() {
+            if check(.identifier) {
+                let caseName = try consume(.identifier, "Expected enum case name.")
+                var rawValue: Expr? = nil
+                if match(.equal) { rawValue = try parseExpression() }
+                cases.append(EnumCase(name: caseName, rawValue: rawValue))
+                try consume(.semicolon, "Expected ';' after enum case.")
+            } else if match(.func) {
+                methods.append(try parseFunctionDeclaration())
+            } else {
+                _ = try parseStatement()
+            }
+        }
+        try consume(.rightBrace, "Expected '}' after enum body.")
+        return EnumDecl(name: name, rawType: rawType, cases: cases, methods: methods, line: name.line, column: name.column)
     }
     
     /// Parses an interface declaration.
     private func parseInterfaceDeclaration() throws -> InterfaceDecl {
-        // Placeholder implementation - replace with actual parsing logic
-        throw ParserError.invalidStatement("Interface declaration parsing not yet implemented", line: peek().line, column: peek().column)
+        let name = try consume(.identifier, "Expected interface name.")
+        try consume(.leftBrace, "Expected '{' before interface body.")
+        var methods: [FunctionDecl] = []
+        while !check(.rightBrace) && !isAtEnd() {
+            if match(.func) { methods.append(try parseFunctionDeclaration()) }
+            else { _ = try parseStatement() }
+        }
+        try consume(.rightBrace, "Expected '}' after interface body.")
+        return InterfaceDecl(name: name, methods: methods, line: name.line, column: name.column)
     }
     
     /// Parses a function declaration.
     private func parseFunctionDeclaration() throws -> FunctionDecl {
-        // Placeholder implementation - replace with actual parsing logic
-        throw ParserError.invalidStatement("Function declaration parsing not yet implemented", line: peek().line, column: peek().column)
+        let name = try consume(.identifier, "Expected function name.")
+        try consume(.leftParen, "Expected '(' after function name.")
+        var params: [Parameter] = []
+        if !check(.rightParen) {
+            repeat {
+                let paramName = try consume(.identifier, "Expected parameter name.")
+                try consume(.colon, "Expected ':' after parameter name.")
+                let typeNode = try parseType()
+                params.append(Parameter(name: paramName, type: typeNode))
+            } while match(.comma)
+        }
+        try consume(.rightParen, "Expected ')' after parameters.")
+        var returnType: TypeNode? = nil
+        if match(.arrow) {
+            returnType = try parseType()
+        }
+        // function body
+        let body: BlockStmt
+        if match(.leftBrace) {
+            body = try parseBlockStatement()
+        } else {
+            throw ParserError.invalidStatement("Expected function body.", line: peek().line, column: peek().column)
+        }
+        return FunctionDecl(name: name, params: params, returnType: returnType, body: body, line: name.line, column: name.column)
     }
     
     /// Parses a variable declaration.
@@ -192,14 +275,42 @@ public class Parser {
     
     /// Parses a while statement.
     private func parseWhileStatement() throws -> WhileStmt {
-        // Placeholder implementation - replace with actual parsing logic
-        throw ParserError.invalidStatement("While statement parsing not yet implemented", line: peek().line, column: peek().column)
+        // 'while' already matched
+        try consume(.leftParen, "Expected '(' after 'while'.")
+        let condition = try parseExpression()
+        try consume(.rightParen, "Expected ')' after while condition.")
+        let body = try parseStatement()
+        return WhileStmt(condition: condition, body: body, line: previous().line, column: previous().column)
     }
     
     /// Parses a for statement.
     private func parseForStatement() throws -> ForStmt {
-        // Placeholder implementation - replace with actual parsing logic
-        throw ParserError.invalidStatement("For statement parsing not yet implemented", line: peek().line, column: peek().column)
+        // 'for' already matched
+        try consume(.leftParen, "Expected '(' after 'for'.")
+        // initializer: var decl or expression or empty
+        var initializer: Stmt? = nil
+        if !match(.semicolon) {
+            if match(.var) {
+                initializer = try parseVarDeclaration()
+            } else {
+                initializer = try parseExpressionStatement()
+            }
+        }
+        // condition
+        var condition: Expr? = nil
+        if !match(.semicolon) {
+            condition = try parseExpression()
+            try consume(.semicolon, "Expected ';' after for condition.")
+        }
+        // increment
+        var increment: Expr? = nil
+        if !check(.rightParen) {
+            increment = try parseExpression()
+        }
+        try consume(.rightParen, "Expected ')' after for clauses.")
+        // body
+        let body = try parseStatement()
+        return ForStmt(initializer: initializer, condition: condition, increment: increment, body: body, line: previous().line, column: previous().column)
     }
     
     /// Parses a block statement (a sequence of statements in braces).
@@ -265,17 +376,17 @@ public class Parser {
         let expr = try parseOr()
         
         if match(.equal, .plusEqual, .minusEqual, .starEqual, .slashEqual, .percentEqual) {
-            let operator = previous()
+            let op = previous()
             let value = try parseAssignment()
             
             // Check if the LHS is a valid assignment target
             if let variableExpr = expr as? VariableExpr {
                 // Variable assignment: a = expr
                 // Convert compound operators (+=, -=, etc.) to their expanded form
-                if operator.type != .equal {
+                if op.type != .equal {
                     // For example, a += b becomes a = a + b
                     let binaryOperatorType: TokenType
-                    switch operator.type {
+                    switch op.type {
                     case .plusEqual: binaryOperatorType = .plus
                     case .minusEqual: binaryOperatorType = .minus
                     case .starEqual: binaryOperatorType = .star
@@ -288,31 +399,31 @@ public class Parser {
                         type: binaryOperatorType,
                         lexeme: String(binaryOperatorType.rawValue),
                         literal: nil,
-                        line: operator.line,
-                        column: operator.column
+                        line: op.line,
+                        column: op.column
                     )
                     
                     let right = BinaryExpr(
                         left: expr,
-                        operator: binaryOperator,
+                        op: binaryOperator,
                         right: value,
-                        line: expr.line,
-                        column: expr.column
+                        line: op.line,
+                        column: op.column
                     )
                     
                     return AssignExpr(
                         name: variableExpr.name,
                         value: right,
-                        line: operator.line,
-                        column: operator.column
+                        line: op.line,
+                        column: op.column
                     )
                 }
                 
                 return AssignExpr(
                     name: variableExpr.name,
                     value: value,
-                    line: operator.line,
-                    column: operator.column
+                    line: op.line,
+                    column: op.column
                 )
             } else if let getExpr = expr as? GetExpr {
                 // Property assignment: obj.prop = expr
@@ -320,16 +431,16 @@ public class Parser {
                     object: getExpr.object,
                     name: getExpr.name,
                     value: value,
-                    line: operator.line,
-                    column: operator.column
+                    line: op.line,
+                    column: op.column
                 )
             } else if let indexExpr = expr as? IndexExpr {
                 // Array index assignment: arr[i] = expr
                 // Not implemented yet, but would be handled here
-                throw ParserError.invalidExpression("Array index assignment not yet supported", line: operator.line, column: operator.column)
+                throw ParserError.invalidExpression("Array index assignment not yet supported", line: op.line, column: op.column)
             }
             
-            throw ParserError.invalidExpression("Invalid assignment target", line: operator.line, column: operator.column)
+            throw ParserError.invalidExpression("Invalid assignment target", line: op.line, column: op.column)
         }
         
         return expr
@@ -340,9 +451,9 @@ public class Parser {
         var expr = try parseAnd()
         
         while match(.or) {
-            let operator = previous()
+            let op = previous()
             let right = try parseAnd()
-            expr = BinaryExpr(left: expr, operator: operator, right: right, line: operator.line, column: operator.column)
+            expr = BinaryExpr(left: expr, op: op, right: right, line: op.line, column: op.column)
         }
         
         return expr
@@ -353,9 +464,9 @@ public class Parser {
         var expr = try parseEquality()
         
         while match(.and) {
-            let operator = previous()
+            let op = previous()
             let right = try parseEquality()
-            expr = BinaryExpr(left: expr, operator: operator, right: right, line: operator.line, column: operator.column)
+            expr = BinaryExpr(left: expr, op: op, right: right, line: op.line, column: op.column)
         }
         
         return expr
@@ -366,9 +477,9 @@ public class Parser {
         var expr = try parseComparison()
         
         while match(.bangEqual, .equalEqual) {
-            let operator = previous()
+            let op = previous()
             let right = try parseComparison()
-            expr = BinaryExpr(left: expr, operator: operator, right: right, line: operator.line, column: operator.column)
+            expr = BinaryExpr(left: expr, op: op, right: right, line: op.line, column: op.column)
         }
         
         return expr
@@ -379,9 +490,9 @@ public class Parser {
         var expr = try parseTerm()
         
         while match(.greater, .greaterEqual, .less, .lessEqual) {
-            let operator = previous()
+            let op = previous()
             let right = try parseTerm()
-            expr = BinaryExpr(left: expr, operator: operator, right: right, line: operator.line, column: operator.column)
+            expr = BinaryExpr(left: expr, op: op, right: right, line: op.line, column: op.column)
         }
         
         return expr
@@ -392,9 +503,9 @@ public class Parser {
         var expr = try parseFactor()
         
         while match(.minus, .plus) {
-            let operator = previous()
+            let op = previous()
             let right = try parseFactor()
-            expr = BinaryExpr(left: expr, operator: operator, right: right, line: operator.line, column: operator.column)
+            expr = BinaryExpr(left: expr, op: op, right: right, line: op.line, column: op.column)
         }
         
         return expr
@@ -405,9 +516,9 @@ public class Parser {
         var expr = try parseUnary()
         
         while match(.slash, .star, .percent) {
-            let operator = previous()
+            let op = previous()
             let right = try parseUnary()
-            expr = BinaryExpr(left: expr, operator: operator, right: right, line: operator.line, column: operator.column)
+            expr = BinaryExpr(left: expr, op: op, right: right, line: op.line, column: op.column)
         }
         
         return expr
@@ -416,9 +527,9 @@ public class Parser {
     /// Parses a unary expression (!, -).
     private func parseUnary() throws -> Expr {
         if match(.bang, .minus) {
-            let operator = previous()
+            let op = previous()
             let right = try parseUnary()
-            return UnaryExpr(operator: operator, right: right, line: operator.line, column: operator.column)
+            return UnaryExpr(op: op, right: right, line: op.line, column: op.column)
         }
         
         return try parseCall()

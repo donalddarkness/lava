@@ -8,7 +8,7 @@
 import Foundation
 
 /// Represents a lexical token in the OuroLang source code.
-public struct Token: Equatable, Hashable {
+public struct Token: Equatable, Hashable, Sendable {
     /// The type of the token.
     public let type: TokenType
 
@@ -76,7 +76,7 @@ private func areEqual(_ lhs: Any?, _ rhs: Any?) -> Bool {
 }
 
 /// Defines the various types of tokens that can appear in OuroLang.
-public enum TokenType: Equatable, Hashable, CaseIterable {
+public enum TokenType: Equatable, Hashable, CaseIterable, Sendable {
     // MARK: - Single-character tokens
     case leftParen, rightParen   // ( )
     case leftBrace, rightBrace   // { }
@@ -165,6 +165,9 @@ public enum TokenType: Equatable, Hashable, CaseIterable {
     case unknown // For unrecognized characters/sequences
 
     // Add more as OuroLang's syntax is defined
+
+    // New additions
+    case and, or                 // && ||
 }
 
 // Convenience for debugging and LSP

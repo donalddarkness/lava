@@ -1,26 +1,14 @@
-import CompilerPluginSupport
 // swift-tools-version:6.1
 import PackageDescription
+import CompilerPluginSupport
 
 let package = Package(
     name: "Lava",
-    platforms: [
-        .macOS(.v10_15),
-        .iOS(.v13),
-        .tvOS(.v13),
-        .watchOS(.v6),
-
-    ],
     products: [
         // Core library containing Lava DSL implementation
         .library(
             name: "Lava",
             targets: ["Lava"]
-        ),
-        // Macros library for DSL features
-        .library(
-            name: "LavaMacros",
-            targets: ["LavaMacros"]
         ),
         // Demo application showcasing Lava DSL features
         .executable(
@@ -49,7 +37,7 @@ let package = Package(
         ),
     ],
     dependencies: [
-        // SwiftSyntax for macros
+        // SwiftSyntax for macros and modern Swift features
         .package(url: "https://github.com/apple/swift-syntax.git", branch: "main"),
         // SwiftLog for unified logging API
         .package(url: "https://github.com/apple/swift-log.git", branch: "main"),
@@ -57,6 +45,10 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-docc-plugin.git", branch: "main"),
         // Collections for advanced data structures
         .package(url: "https://github.com/apple/swift-collections.git", branch: "main"),
+        // Swift Concurrency for modern async/await support
+        .package(url: "https://github.com/apple/swift-async-algorithms.git", branch: "main"),
+        // Swift System for modern system interfaces
+        .package(url: "https://github.com/apple/swift-system.git", branch: "main"),
     ],
     targets: [
         .macro(
@@ -64,6 +56,14 @@ let package = Package(
             dependencies: [
                 .product(name: "SwiftSyntaxMacros", package: "swift-syntax"),
                 .product(name: "SwiftCompilerPlugin", package: "swift-syntax"),
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("BareSlashRegexLiterals"),
+                .enableUpcomingFeature("ConciseMagicFile"),
+                .enableUpcomingFeature("ExistentialAny"),
+                .enableUpcomingFeature("ForwardTrailingClosures"),
+                .enableUpcomingFeature("ImplicitOpenExistentials"),
+                .enableUpcomingFeature("StrictConcurrency"),
             ]
         ),
         .target(
@@ -72,9 +72,19 @@ let package = Package(
                 "LavaMacros",
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "Collections", package: "swift-collections"),
+                .product(name: "AsyncAlgorithms", package: "swift-async-algorithms"),
+                .product(name: "SystemPackage", package: "swift-system"),
+            ],
+            swiftSettings: [
+                .enableUpcomingFeature("BareSlashRegexLiterals"),
+                .enableUpcomingFeature("ConciseMagicFile"),
+                .enableUpcomingFeature("ExistentialAny"),
+                .enableUpcomingFeature("ForwardTrailingClosures"),
+                .enableUpcomingFeature("ImplicitOpenExistentials"),
+                .enableUpcomingFeature("StrictConcurrency"),
             ],
             plugins: [
-                .plugin(name: "SwiftDocCPlugin", package: "swift-docc-plugin")
+                .plugin(name: "SwiftDocCStub")
             ]
         ),
 
@@ -90,6 +100,9 @@ let package = Package(
             dependencies: [
                 .product(name: "Logging", package: "swift-log"),
                 .product(name: "Collections", package: "swift-collections"),
+            ],
+            plugins: [
+                .plugin(name: "SwiftDocCStub")
             ]
         ),
 
@@ -114,7 +127,15 @@ let package = Package(
         // Test targets with improved organization
         .testTarget(
             name: "LavaExtensionsTests",
-            dependencies: ["Lava"]
+            dependencies: ["Lava"],
+            swiftSettings: [
+                .enableUpcomingFeature("BareSlashRegexLiterals"),
+                .enableUpcomingFeature("ConciseMagicFile"),
+                .enableUpcomingFeature("ExistentialAny"),
+                .enableUpcomingFeature("ForwardTrailingClosures"),
+                .enableUpcomingFeature("ImplicitOpenExistentials"),
+                .enableUpcomingFeature("StrictConcurrency"),
+            ]
         ),
         .testTarget(
             name: "LavaCommandMVCTests",
@@ -124,4 +145,11 @@ let package = Package(
             name: "OuroLangCoreTests",
             dependencies: ["OuroLangCore"]
         ),
+        // Local stub plugin for documentation generation
+        .plugin(
+            name: "SwiftDocCStub",
+            capability: .command(
+                intent: .documentationGeneration()
+            )
+        )
     ])

@@ -294,3 +294,11 @@ class StandardErrorOutputStream: TextOutputStream {
 // Start the server
 let server = LSPServer()
 server.run()
+
+// Example of using async/await in LSP request handling
+public actor LanguageServer {
+    public func handleRequest(_ request: Request) async throws -> Response {
+        // Use async/await for non-blocking request processing
+        return try await processRequest(request)
+    }
+}

@@ -1,6 +1,15 @@
 import Foundation
 import Lava
 
+// Demonstrate macro-based controller
+@RestController
+public struct HelloController {
+    @RequestMapping("/hello", method: .get)
+    public func hello() -> HttpResponse {
+        .text("Hello from Macro!")
+    }
+}
+
 /// ModernDemo - Main entry point for the Lava framework demo
 /// Demonstrates modern Swift syntax and patterns
 ///
@@ -108,6 +117,30 @@ public actor ModernDemo {
 
     /// Main entry point demonstrating modern Swift features
     public static func main() async throws {
+        // Demonstrate unified Lava API
+        let executor = Lava.Async.newSingleThreadExecutor()
+        let future: LavaFuture<String> = executor.submit { "Hello from LavaUnified!" }
+        if let message = try? future.get(timeout: 1) {
+            print("LavaUnified says: \(message)")
+        }
+        
+        // Demonstrate macro-based controller
+        print("Demonstrating macro-based controllers...")
+        let servlet = Lava.MVC.DispatcherServlet()
+        let responseMacro = await servlet.handleRequest(Lava.HttpRequest(method: .get, path: "/hello"))
+        let textMacro = String(data: responseMacro.body, encoding: .utf8) ?? ""
+        print("Controller responded: \(textMacro)")
+
+        // Demonstrate route builder DSL
+        print("Demonstrating route builder DSL...")
+        await servlet.registerRoutes {
+            route("/hello") { _ in .text("Hello from RouteBuilder!") }
+            route("/status", method: .get) { _ in .text("OK") }
+        }
+        let responseRoute = await servlet.handleRequest(Lava.HttpRequest(method: .get, path: "/hello"))
+        let textRoute = String(data: responseRoute.body, encoding: .utf8) ?? ""
+        print("Route builder responded: \(textRoute)")
+
         print("Starting ModernDemo with modern Swift syntax...")
 
         // Create document using result builder

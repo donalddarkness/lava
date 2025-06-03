@@ -126,12 +126,12 @@ public protocol ASTVisitor {
 /// Binary expression (e.g., a + b, x > y)
 public class BinaryExpr: Expr {
     public let left: Expr
-    public let operator: Token
+    public let op: Token
     public let right: Expr
     
-    public init(left: Expr, operator: Token, right: Expr, line: Int, column: Int) {
+    public init(left: Expr, op: Token, right: Expr, line: Int, column: Int) {
         self.left = left
-        self.operator = `operator`
+        self.op = op
         self.right = right
         super.init(line: line, column: column)
     }
@@ -173,11 +173,11 @@ public class LiteralExpr: Expr {
 
 /// Unary expression (e.g., !isValid, -count)
 public class UnaryExpr: Expr {
-    public let operator: Token
+    public let op: Token
     public let right: Expr
     
-    public init(operator: Token, right: Expr, line: Int, column: Int) {
-        self.operator = `operator`
+    public init(op: Token, right: Expr, line: Int, column: Int) {
+        self.op = op
         self.right = right
         super.init(line: line, column: column)
     }
@@ -629,4 +629,55 @@ public class GenericType: TypeNode {
     public override func accept<V: ASTVisitor>(visitor: V) throws -> V.Result {
         return try visitor.visitGenericType(self)
     }
+}
+
+// Example of using Swift's type system improvements in AST
+public struct ASTNodeExample: Hashable, Codable, Sendable {
+    // Use existential any for flexible type handling
+    public var type: any TypeProtocol
+
+    // Implement Equatable
+    public static func == (lhs: ASTNodeExample, rhs: ASTNodeExample) -> Bool {
+        return lhs.type.name == rhs.type.name
+    }
+
+    // Implement Hashable
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(type.name)
+    }
+
+    // Implement Codable
+    enum CodingKeys: String, CodingKey {
+        case type
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let typeName = try container.decode(String.self, forKey: .type)
+        self.type = TypeRegistry.shared.type(for: typeName)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(type.name, forKey: .type)
+    }
+}
+
+// Placeholder definition for TypeProtocol
+public protocol TypeProtocol: Sendable {
+    var name: String { get }
+}
+
+// Convert TypeRegistry to actor for concurrency safety
+public actor TypeRegistry {
+    public static let shared = TypeRegistry()
+
+    public func type(for name: String) -> any TypeProtocol {
+        return DummyType(name: name)
+    }
+}
+
+// Dummy type conforming to TypeProtocol
+public struct DummyType: TypeProtocol, Sendable {
+    public var name: String
 }

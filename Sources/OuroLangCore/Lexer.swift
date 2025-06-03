@@ -467,3 +467,5 @@ public class Lexer {
                 throw LexerError.unexpectedCharacter(char, line: line, column: column)
             }
         }
+    }
+}

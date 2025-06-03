@@ -692,3 +692,13 @@ do {
     print("\(error)")
     exit(1)
 }
+
+// Example of optimizing transpiler with Swift concurrency
+public actor Transpiler {
+    public func transpile(source: String) async throws -> TranspiledOutput {
+        // Use structured concurrency for efficient transpilation
+        async let parsed = parse(source)
+        async let transformed = transform(parsed)
+        return try await generateCode(from: transformed)
+    }
+}

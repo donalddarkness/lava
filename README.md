@@ -73,10 +73,23 @@ Compile an OuroLang source file:
 swift run OuroCompiler path/to/source.ouro
 ```
 
-Transpile OuroLang to another language:
+Transpile OuroLang to another language (Swift or C):
 
 ```bash
+# Transpile to Swift
 swift run OuroTranspiler -t swift path/to/source.ouro
+
+# Transpile to C (ISO C11)
+swift run OuroTranspiler -t c path/to/source.ouro
+
+# Alternatively, use explicit C11 flag
+swift run OuroTranspiler -t c11 path/to/source.ouro
+
+# Transpile to C++23
+swift run OuroTranspiler -t cpp path/to/source.ouro
+
+# Alternatively, use explicit C++23 flag
+swift run OuroTranspiler -t cpp23 path/to/source.ouro
 ```
 
 Use with your favorite editor through the Language Server:
@@ -156,25 +169,93 @@ struct Point {
 }
 ```
 
-## Contributing
+### Codebase Integration
+```ouro
+// Import core modules from the codebase
+import "Lava"
+import "OuroLangCore"
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+func main() {
+    let users = ["Alice", "Bob", "Charlie"]
+    users.forEach(user => print("Hello, ${user}!"))
+}
+```
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/amazing-feature`
-3. Commit your changes: `git commit -m 'Add some amazing feature'`
-4. Push to the branch: `git push origin feature/amazing-feature`
-5. Open a Pull Request
+### Linter Errors
+```ouro
+// This example shows common linter errors detected
+func calculateSum(a, b) { // Error: Missing type annotations for parameters
+    return a + b
+}
 
-## License
+missingVar = 10 // Error: 'missingVar' is not declared
+```
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+### Web Example
+```ouro
+// Simple HTTP server example
+import "WebServer"
 
-## Acknowledgments
+async func startServer() {
+    let server = WebServer(port: 8080)
+    await server.route("/", req => {
+        return "Hello, .ouro Web!"
+    })
+    await server.listen()
+}
 
-- Swift compiler team for their excellent work on Swift
-- The LLVM Project for their compiler infrastructure
+startServer()
+```
 
----
+### Recent Changes
+```ouro
+// Demonstrates new 'async' and 'await' syntax from recent updates
+async func fetchData() {
+    let data = await HttpClient.get("https://api.example.com/data")
+    print("Received: ${data}")
+}
 
-© 2023 OuroLang Team
+fetchData()
+```
+
+## Unified `Lava` API Examples
+
+```
+
+## Full README Walkthrough
+
+This walkthrough will guide you through each part of this README:
+
+- **Project Status**: Describes the current development phase and readiness of OuroLang.
+
+- **Overview**: Explains the language goals, key features, and primary use cases (graphics, AI, high performance).
+
+- **Project Structure**: Shows the directory layout under `lava/`, with core compiler components, executables, tests, and documentation.
+
+- **Getting Started**:
+  - *Prerequisites*: Software and toolchain requirements (Swift 6.0+, Xcode, etc.).
+  - *Installation*: How to clone, build, and test the project using `swift build` and `swift test`.
+
+- **Usage**: Commands to:
+  - Compile a `.ouro` file with `OuroCompiler`.
+  - Transpile to another language with `OuroTranspiler`.
+  - Run the language server via `OuroLangLSP`.
+
+- **Language Examples**: Code samples demonstrating:
+  - Hello World
+  - Variables, types, and constants
+  - Functions (including generics and expression bodies)
+  - Classes and structures
+
+- **Codebase Integration**: Shows how to import the `Lava` and `OuroLangCore` modules and iterate over collections.
+
+- **Linter Errors**: Illustrates common linting mistakes (missing type annotations, undeclared variables) and their error messages.
+
+- **Web Example**: A minimal `WebServer` snippet using `async`/`
+
+## Continuous Integration (CI Pipeline)
+
+This project uses GitHub Actions to:
+- Run on pushes and pull requests against `main`.
+- Build and test on both macOS and Ubuntu using Swift 6.1.
+- Run SwiftLint in strict mode on macOS.

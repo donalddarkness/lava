@@ -1,0 +1,11 @@
+.build
+Package.resolved
+.DS_Store
+.vscode
+.idea
+.cursor
+.cursorrules
+.cursorrules.md
+.cursorrules.txt
+.cursorrules.yml
+.cursorrules.yaml

@@ -2899,3 +2899,1146 @@ switch (shape) {
         print("Unknown shape");
         break;
 }
+
+```
+
+## Cross-Platform Language Compiler Migration Guide
+
+### Overview
+
+This section provides comprehensive guidelines for migrating cross-platform language compilers to Swift 6, with a focus on modern features, type safety, and platform compatibility.
+
+### Migration Goals
+
+1. **Swift 6 Compatibility**
+   - Adopt new type system features
+   - Implement strict concurrency model
+   - Utilize modern memory management
+   - Support new platform APIs
+
+2. **Modern Concurrency**
+   - Implement async/await patterns
+   - Use structured concurrency
+   - Adopt actor-based isolation
+   - Support task management
+
+3. **Type System Improvements**
+   - Enhanced generic constraints
+   - Improved type inference
+   - Better null safety
+   - Protocol composition
+
+4. **Platform Support**
+   - Unified platform abstractions
+   - Modern API availability
+   - Cross-platform consistency
+   - Platform-specific optimizations
+
+### Migration Process
+
+#### 1. Compiler Infrastructure Updates
+
+```swift
+// Before: Traditional compiler pipeline
+public class Compiler {
+    private func parse(source: String) -> AST {
+        // Traditional parsing
+    }
+    
+    private func typeCheck(ast: AST) -> TypedAST {
+        // Basic type checking
+    }
+}
+
+// After: Modern async compiler pipeline
+public actor Compiler {
+    private func parse(source: String) async throws -> AST {
+        // Async parsing with modern error handling
+    }
+    
+    private func typeCheck(ast: AST) async throws -> TypedAST {
+        // Concurrent type checking
+    }
+    
+    public func compile(source: String) async throws -> CompiledOutput {
+        let ast = try await parse(source: source)
+        let typedAST = try await typeCheck(ast: ast)
+        return try await generateCode(from: typedAST)
+    }
+}
+```
+
+#### 2. Modern Concurrency Implementation
+
+```swift
+// Before: Traditional threading
+public class CodeGenerator {
+    private let queue = DispatchQueue(label: "codegen")
+    
+    func generateCode(from ast: AST) {
+        queue.async {
+            // Code generation
+        }
+    }
+}
+
+// After: Modern concurrency
+public actor CodeGenerator {
+    private var compilationTasks: [Task<CompiledOutput, Error>] = []
+    
+    func generateCode(from ast: AST) async throws -> CompiledOutput {
+        // Structured concurrency for code generation
+        async let optimized = optimize(ast)
+        async let validated = validate(ast)
+        
+        let (optResult, valResult) = try await (optimized, validated)
+        return try await finalize(optimized: optResult, validated: valResult)
+    }
+    
+    private func optimize(_ ast: AST) async throws -> OptimizedAST {
+        // Concurrent optimization passes
+    }
+}
+```
+
+#### 3. Type System Modernization
+
+```swift
+// Before: Basic type system
+protocol Type {
+    var name: String { get }
+}
+
+// After: Enhanced type system
+protocol Type {
+    associatedtype Context
+    var name: String { get }
+    var genericParameters: [GenericParameter] { get }
+    var constraints: [TypeConstraint] { get }
+    
+    func isSubtype(of other: any Type) async -> Bool
+    func resolve(in context: Context) async throws -> ResolvedType
+}
+
+// Modern type constraints
+struct TypeConstraint {
+    let lhs: any Type
+    let rhs: any Type
+    let relation: ConstraintRelation
+    
+    enum ConstraintRelation {
+        case conformsTo
+        case equalTo
+        case subtypeOf
+    }
+}
+```
+
+#### 4. Platform Abstraction Layer
+
+```swift
+// Before: Platform-specific code
+#if os(macOS)
+    func compileForMacOS() { }
+#elseif os(Linux)
+    func compileForLinux() { }
+#endif
+
+// After: Unified platform abstraction
+public protocol PlatformTarget {
+    var name: String { get }
+    var architecture: Architecture { get }
+    var osVersion: OperatingSystemVersion { get }
+    
+    func generateCode(for ast: AST) async throws -> PlatformSpecificCode
+    func optimize(for platform: PlatformTarget) async throws -> OptimizedCode
+}
+
+public struct CrossPlatformCompiler {
+    private let targets: [PlatformTarget]
+    
+    public func compile(source: String, for targets: [PlatformTarget]) async throws -> [PlatformSpecificBinary] {
+        let ast = try await parse(source: source)
+        return try await withThrowingTaskGroup(of: PlatformSpecificBinary.self) { group in
+            for target in targets {
+                group.addTask {
+                    let code = try await target.generateCode(for: ast)
+                    return try await target.optimize(for: target)
+                }
+            }
+            return try await group.collect()
+        }
+    }
+}
+```
+
+### Migration Checklist
+
+1. **Compiler Infrastructure**
+   - [ ] Update build system to Swift 6
+   - [ ] Implement modern error handling
+   - [ ] Adopt async/await for compilation pipeline
+   - [ ] Update dependency management
+
+2. **Type System**
+   - [ ] Implement new type constraints
+   - [ ] Update generic system
+   - [ ] Add protocol composition
+   - [ ] Enhance type inference
+
+3. **Concurrency**
+   - [ ] Migrate to structured concurrency
+   - [ ] Implement actor-based isolation
+   - [ ] Add task management
+   - [ ] Update thread safety
+
+4. **Platform Support**
+   - [ ] Create platform abstraction layer
+   - [ ] Implement cross-platform APIs
+   - [ ] Add platform-specific optimizations
+   - [ ] Update platform detection
+
+5. **Testing**
+   - [ ] Add concurrency tests
+   - [ ] Implement platform-specific tests
+   - [ ] Add type system tests
+   - [ ] Create migration tests
+
+### Best Practices
+
+1. **Incremental Migration**
+   - Migrate one component at a time
+   - Maintain backward compatibility
+   - Use feature flags for new functionality
+   - Test thoroughly after each step
+
+2. **Concurrency Safety**
+   - Use actors for shared state
+   - Implement proper isolation
+   - Handle cancellation properly
+   - Manage task priorities
+
+3. **Type Safety**
+   - Leverage new type system features
+   - Use strict null safety
+   - Implement proper generic constraints
+   - Add comprehensive type checking
+
+4. **Platform Compatibility**
+   - Use unified abstractions
+   - Implement platform-specific optimizations
+   - Handle platform differences gracefully
+   - Maintain consistent behavior
+
+5. **Security**
+   - Sandbox only needed resources via entitlements.  
+   - Validate all inputs to prevent injection:
+   ```swift
+   public enum ValidationError: Error {
+     case invalidCharacters
+   }
+
+   public func validateFilename(_ name: String) throws {
+     let allowed = CharacterSet.alphanumerics.union(.init(charactersIn: "-_."))
+     if name.rangeOfCharacter(from: allowed.inverted) != nil {
+       throw ValidationError.invalidCharacters
+     }
+   }
+   ```
+   - Apply least-privilege principles for file and network access.
+
+6. **Performance**
+   - Profile early with Xcode Instruments to find hot paths.  
+   - Favor cache-friendly structures (contiguous arrays, arenas):
+   ```swift
+   var buffer = [UInt8](repeating: 0, count: 16_384)
+   for i in 0..<buffer.count {
+     buffer[i] = UInt8(i & 0xFF)
+   }
+   ```
+   - Batch I/O operations and minimize system calls. Use `TaskGroup` for parallel workloads.
+
+### Troubleshooting Guide
+
+1. **Concurrency Issues**
+   ```swift
+   // Problem: Data races in compiler
+   // Solution: Use actors for shared state
+   public actor CompilerState {
+       private var compilationUnits: [String: CompilationUnit] = [:]
+       
+       func addUnit(_ unit: CompilationUnit) {
+           compilationUnits[unit.id] = unit
+       }
+   }
+   ```
+
+2. **Type System Errors**
+   ```swift
+   // Problem: Generic constraint violations
+   // Solution: Use modern type constraints
+   protocol Compilable {
+       associatedtype Output
+       func compile() async throws -> Output
+   }
+   
+   struct TypeChecker<T: Compilable> {
+       func check(_ input: T) async throws -> T.Output {
+           return try await input.compile()
+       }
+   }
+   ```
+
+3. **Platform Compatibility**
+   ```swift
+   // Problem: Platform-specific code
+   // Solution: Use platform abstraction
+   public struct PlatformAbstraction {
+       static func getCompiler(for platform: PlatformTarget) -> any Compiler {
+           switch platform {
+           case is MacOSPlatform:
+               return MacOSCompiler()
+           case is LinuxPlatform:
+               return LinuxCompiler()
+           default:
+               return GenericCompiler()
+           }
+       }
+   }
+   ```
+
+### Migration Examples
+
+1. **Lexer Migration**
+```swift
+// Before: Synchronous lexer
+public class Lexer {
+    func tokenize(_ input: String) -> [Token] {
+        // Synchronous tokenization
+    }
+}
+
+// After: Async lexer with modern features
+public actor Lexer {
+    private let source: String
+    private var position: String.Index
+    
+    public init(source: String) {
+        self.source = source
+        self.position = source.startIndex
+    }
+    
+    public func tokenize() async throws -> [Token] {
+        var tokens: [Token] = []
+        while let token = try await nextToken() {
+            tokens.append(token)
+        }
+        return tokens
+    }
+    
+    private func nextToken() async throws -> Token? {
+        // Modern async tokenization
+    }
+}
+```
+
+2. **Parser Migration**
+```swift
+// Before: Traditional parser
+public class Parser {
+    func parse(_ tokens: [Token]) -> AST {
+        // Synchronous parsing
+    }
+}
+
+// After: Modern async parser
+public actor Parser {
+    private let tokens: [Token]
+    private var currentIndex: Int
+    
+    public init(tokens: [Token]) {
+        self.tokens = tokens
+        self.currentIndex = 0
+    }
+    
+    public func parse() async throws -> AST {
+        return try await parseProgram()
+    }
+    
+    private func parseProgram() async throws -> ProgramNode {
+        // Modern async parsing with error handling
+    }
+}
+```
+
+3. **Code Generator Migration**
+```swift
+// Before: Basic code generation
+public class CodeGenerator {
+    func generate(_ ast: AST) -> String {
+        // Synchronous code generation
+    }
+}
+
+// After: Modern code generation
+public actor CodeGenerator {
+    private let optimizationLevel: OptimizationLevel
+    private let target: PlatformTarget
+    
+    public func generate(from ast: AST) async throws -> CompiledOutput {
+        let optimized = try await optimize(ast)
+        let validated = try await validate(optimized)
+        return try await emitCode(for: validated)
+    }
+    
+    private func optimize(_ ast: AST) async throws -> OptimizedAST {
+        // Modern optimization with concurrency
+    }
+}
+```
+
+### Performance Considerations
+
+1. **Concurrency Optimization**
+   - Use task groups for parallel processing
+   - Implement proper cancellation
+   - Manage memory efficiently
+   - Handle resource contention
+
+2. **Type System Performance**
+   - Optimize type inference
+   - Cache type resolutions
+   - Implement efficient constraints
+   - Use modern type erasure
+
+3. **Platform-Specific Optimizations**
+   - Use platform-specific intrinsics
+   - Implement proper memory alignment
+   - Optimize for target architecture
+   - Handle platform differences
+
+### Testing Strategy
+
+1. **Unit Tests**
+```swift
+final class CompilerTests: XCTestCase {
+    func testAsyncCompilation() async throws {
+        let compiler = Compiler()
+        let source = "let x = 42"
+        let output = try await compiler.compile(source: source)
+        XCTAssertNotNil(output)
+    }
+    
+    func testConcurrentCompilation() async throws {
+        let compiler = Compiler()
+        let sources = ["let x = 1", "let y = 2", "let z = 3"]
+        
+        let outputs = try await withThrowingTaskGroup(of: CompiledOutput.self) { group in
+            for source in sources {
+                group.addTask {
+                    return try await compiler.compile(source: source)
+                }
+            }
+            return try await group.collect()
+        }
+        
+        XCTAssertEqual(outputs.count, sources.count)
+    }
+}
+```
+
+2. **Integration Tests**
+```swift
+final class CrossPlatformTests: XCTestCase {
+    func testCrossPlatformCompilation() async throws {
+        let compiler = CrossPlatformCompiler()
+        let source = "let x = 42"
+        let targets = [MacOSPlatform(), LinuxPlatform()]
+        
+        let binaries = try await compiler.compile(source: source, for: targets)
+        XCTAssertEqual(binaries.count, targets.count)
+        
+        for (binary, target) in zip(binaries, targets) {
+            XCTAssertTrue(binary.isCompatible(with: target))
+        }
+    }
+}
+```
+
+### Documentation
+
+1. **API Documentation**
+```swift
+/// A modern cross-platform compiler implementation.
+///
+/// This compiler supports:
+/// - Async/await based compilation pipeline
+/// - Modern type system features
+/// - Cross-platform code generation
+/// - Structured concurrency
+public actor CrossPlatformCompiler {
+    /// Compiles source code for multiple platforms concurrently.
+    ///
+    /// - Parameters:
+    ///   - source: The source code to compile
+    ///   - targets: The target platforms for compilation
+    /// - Returns: An array of platform-specific binaries
+    /// - Throws: CompilationError if compilation fails
+    public func compile(
+        source: String,
+        for targets: [PlatformTarget]
+    ) async throws -> [PlatformSpecificBinary]
+}
+```
+
+2. **Migration Guide**
+```markdown
+# Cross-Platform Compiler Migration Guide
+
+## Overview
+This guide provides step-by-step instructions for migrating
+existing compilers to Swift 6 with modern features.
+
+## Steps
+1. Update build system
+2. Implement async/await
+3. Adopt modern type system
+4. Add platform abstractions
+5. Update testing infrastructure
+
+## Examples
+See the examples directory for complete migration examples.
+```
+
+### Conclusion
+
+The migration to Swift 6 for cross-platform language compilers involves several key aspects:
+1. Modern concurrency with async/await
+2. Enhanced type system features
+3. Platform abstraction layer
+4. Improved testing infrastructure
+5. Comprehensive documentation
+
+By following this guide and implementing the provided examples, you can successfully migrate your compiler to Swift 6 while maintaining cross-platform compatibility and modern language features.
+
+### Codebase-Specific Migration Examples
+
+#### 1. Macro Migration (LavaMacros)
+
+```swift
+// Before: Traditional macro implementation
+public struct ThreadMacro: MemberMacro {
+    public static func expansion(
+        of node: AttributeSyntax,
+        providingMembersOf declaration: some DeclGroupSyntax,
+        in context: some MacroExpansionContext
+    ) throws -> [DeclSyntax] {
+        // Legacy GCD-based implementation
+        return [
+            """
+            func runOnMainThread(_ block: @escaping () -> Void) {
+                DispatchQueue.main.async {
+                    block()
+                }
+            }
+            """
+        ]
+    }
+}
+
+// After: Modern Swift 6 macro with async/await
+public struct ThreadMacro: MemberMacro {
+    public static func expansion(
+        of node: AttributeSyntax,
+        providingMembersOf declaration: some DeclGroupSyntax,
+        in context: some MacroExpansionContext
+    ) throws -> [DeclSyntax] {
+        // Modern async/await implementation
+        return [
+            """
+            @available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
+            func runOnMainThreadAsync<T>(_ operation: @escaping () async throws -> T) async throws -> T {
+                try await MainActor.run {
+                    try await operation()
+                }
+            }
+            """,
+            // Add structured concurrency support
+            """
+            @available(macOS 12.0, iOS 15.0, tvOS 15.0, watchOS 8.0, *)
+            func withTaskGroup<T>(_ operation: @escaping (inout TaskGroup<T>) async throws -> Void) async throws -> [T] {
+                try await withThrowingTaskGroup(of: T.self) { group in
+                    try await operation(&group)
+                    return try await group.collect()
+                }
+            }
+            """
+        ]
+    }
+}
+```
+
+#### 2. Lexer Migration (OuroLangCore)
+
+```swift
+// Before: Synchronous lexer implementation
+public class Lexer {
+    private let source: String
+    private var tokens: [Token] = []
+    private var startIndex: String.Index
+    private var currentIndex: String.Index
+    
+    public func scanTokens() -> [Token] {
+        while !isAtEnd() {
+            startIndex = currentIndex
+            scanToken()
+        }
+        return tokens
+    }
+}
+
+// After: Modern async lexer with improved type safety
+public actor Lexer {
+    private let source: String
+    private var tokens: [Token] = []
+    private var startIndex: String.Index
+    private var currentIndex: String.Index
+    private var line: Int = 1
+    private var column: Int = 1
+    
+    public init(source: String) {
+        self.source = source
+        self.startIndex = source.startIndex
+        self.currentIndex = source.startIndex
+    }
+    
+    public func scanTokens() async throws -> [Token] {
+        // Use structured concurrency for token scanning
+        try await withThrowingTaskGroup(of: Token.self) { group in
+            while !isAtEnd() {
+                startIndex = currentIndex
+                group.addTask {
+                    try await self.scanToken()
+                }
+            }
+            return try await group.collect()
+        }
+    }
+    
+    private func scanToken() async throws -> Token {
+        // Modern token scanning with improved error handling
+        let c = advance()
+        switch c {
+        case "(": return Token(type: .leftParen, lexeme: "(", line: line, column: column)
+        case ")": return Token(type: .rightParen, lexeme: ")", line: line, column: column)
+        // ... other cases
+        default:
+            if isDigit(c) {
+                return try await scanNumber()
+            } else if isAlpha(c) {
+                return try await scanIdentifier()
+            }
+            throw LexerError.invalidCharacter(c, line: line, column: column)
+        }
+    }
+}
+```
+
+#### 3. Platform-Specific Optimizations
+
+```swift
+// Platform abstraction for OuroLang compiler
+public protocol PlatformTarget {
+    var name: String { get }
+    var architecture: Architecture { get }
+    var osVersion: OperatingSystemVersion { get }
+    
+    // Modern async code generation
+    func generateCode(for ast: AST) async throws -> PlatformSpecificCode
+    func optimize(for platform: PlatformTarget) async throws -> OptimizedCode
+}
+
+// macOS-specific implementation
+public struct MacOSPlatform: PlatformTarget {
+    public let name = "macOS"
+    public let architecture: Architecture
+    public let osVersion: OperatingSystemVersion
+    
+    public func generateCode(for ast: AST) async throws -> PlatformSpecificCode {
+        // Use modern Swift concurrency for code generation
+        async let optimized = optimize(ast)
+        async let validated = validate(ast)
+        
+        let (optResult, valResult) = try await (optimized, validated)
+        return try await emitCode(for: optResult, validated: valResult)
+    }
+    
+    private func optimize(_ ast: AST) async throws -> OptimizedAST {
+        // Platform-specific optimizations
+        if #available(macOS 12.0, *) {
+            return try await withTaskGroup(of: OptimizedAST.self) { group in
+                // Parallel optimization passes
+                group.addTask { try await optimizeMemory(ast) }
+                group.addTask { try await optimizePerformance(ast) }
+                return try await group.collect().first ?? ast
+            }
+        } else {
+            return try await optimizeLegacy(ast)
+        }
+    }
+}
+```
+
+#### 4. Performance Optimizations
+
+```swift
+// Modern performance optimizations for OuroLang compiler
+public actor CompilerOptimizer {
+    private var optimizationCache: [String: OptimizedAST] = [:]
+    private let optimizationLevel: OptimizationLevel
+    
+    public func optimize(_ ast: AST) async throws -> OptimizedAST {
+        // Use modern Swift concurrency for parallel optimization
+        if let cached = optimizationCache[ast.id] {
+            return cached
+        }
+        
+        let optimized = try await withThrowingTaskGroup(of: OptimizedAST.self) { group in
+            // Parallel optimization passes
+            group.addTask { try await optimizeMemory(ast) }
+            group.addTask { try await optimizePerformance(ast) }
+            group.addTask { try await optimizeSize(ast) }
+            
+            // Collect and combine results
+            let results = try await group.collect()
+            return try await combineOptimizations(results)
+        }
+        
+        optimizationCache[ast.id] = optimized
+        return optimized
+    }
+    
+    private func optimizeMemory(_ ast: AST) async throws -> OptimizedAST {
+        // Memory optimization using modern Swift features
+        if #available(macOS 12.0, iOS 15.0, *) {
+            return try await withTaskGroup(of: OptimizedAST.self) { group in
+                // Parallel memory optimization passes
+                group.addTask { try await optimizeAllocations(ast) }
+                group.addTask { try await optimizeReferences(ast) }
+                return try await combineMemoryOptimizations(group)
+            }
+        } else {
+            return try await optimizeMemoryLegacy(ast)
+        }
+    }
+}
+```
+
+### Testing Strategy for Codebase
+
+```swift
+// Modern testing approach for OuroLang compiler
+final class CompilerTests: XCTestCase {
+    func testAsyncCompilation() async throws {
+        let compiler = Compiler()
+        let source = """
+        func main() {
+            let x = 42
+            print(x)
+        }
+        """
+        
+        // Test modern async compilation
+        let output = try await compiler.compile(source: source)
+        XCTAssertNotNil(output)
+        
+        // Test platform-specific compilation
+        let platforms: [PlatformTarget] = [
+            MacOSPlatform(architecture: .arm64, osVersion: .init(major: 12, minor: 0)),
+            LinuxPlatform(architecture: .x86_64, osVersion: .init(major: 20, minor: 4))
+        ]
+        
+        let binaries = try await compiler.compile(source: source, for: platforms)
+        XCTAssertEqual(binaries.count, platforms.count)
+    }
+    
+    func testConcurrentOptimization() async throws {
+        let optimizer = CompilerOptimizer(optimizationLevel: .aggressive)
+        let ast = try await parseTestAST()
+        
+        // Test parallel optimization
+        let optimized = try await optimizer.optimize(ast)
+        XCTAssertNotNil(optimized)
+        
+        // Verify optimization results
+        let metrics = try await optimized.measurePerformance()
+        XCTAssertLessThan(metrics.memoryUsage, 100_000_000) // 100MB
+        XCTAssertLessThan(metrics.executionTime, 1.0) // 1 second
+    }
+    
+    func testCrossPlatformCompatibility() async throws {
+        let compiler = CrossPlatformCompiler()
+        let testCases = [
+            ("simple.ouro", "Simple program compilation"),
+            ("complex.ouro", "Complex program with async/await"),
+            ("error.ouro", "Error handling and recovery")
+        ]
+        
+        for (filename, description) in testCases {
+            let source = try loadTestFile(filename)
+            let platforms = [MacOSPlatform(), LinuxPlatform(), WindowsPlatform()]
+            
+            let results = try await withThrowingTaskGroup(of: (PlatformTarget, CompiledOutput).self) { group in
+                for platform in platforms {
+                    group.addTask {
+                        let output = try await compiler.compile(source: source, for: platform)
+                        return (platform, output)
+                    }
+                }
+                return try await group.collect()
+            }
+            
+            // Verify cross-platform compatibility
+            for (platform, output) in results {
+                XCTAssertTrue(output.isValid, "\(description) failed on \(platform.name)")
+                XCTAssertTrue(output.isCompatible(with: platform), "\(description) incompatible with \(platform.name)")
+            }
+        }
+    }
+}
+```
+
+### Platform-Specific Migration Guidelines
+
+1. **macOS/iOS Migration**
+   ```swift
+   // Modern platform-specific features
+   @available(macOS 12.0, iOS 15.0, *)
+   public struct ModernPlatformFeatures {
+       // Use modern concurrency
+       public func compileWithConcurrency(_ source: String) async throws -> CompiledOutput {
+           try await withThrowingTaskGroup(of: CompiledOutput.self) { group in
+               // Parallel compilation passes
+               group.addTask { try await parse(source) }
+               group.addTask { try await typeCheck(source) }
+               return try await combineResults(group)
+           }
+       }
+       
+       // Use modern memory management
+       public func optimizeMemory(_ ast: AST) async throws -> OptimizedAST {
+           // Use modern memory management features
+           return try await withTaskGroup(of: OptimizedAST.self) { group in
+               group.addTask { try await optimizeAllocations(ast) }
+               group.addTask { try await optimizeReferences(ast) }
+               return try await combineOptimizations(group)
+           }
+       }
+   }
+   ```
+
+2. **Linux Migration**
+   ```swift
+   // Linux-specific optimizations
+   public struct LinuxPlatformFeatures {
+       public func compileForLinux(_ source: String) async throws -> LinuxBinary {
+           // Use Linux-specific optimizations
+           let ast = try await parse(source)
+           let optimized = try await optimizeForLinux(ast)
+           return try await generateLinuxBinary(optimized)
+       }
+       
+       private func optimizeForLinux(_ ast: AST) async throws -> OptimizedAST {
+           // Linux-specific optimization passes
+           return try await withTaskGroup(of: OptimizedAST.self) { group in
+               group.addTask { try await optimizeForELF(ast) }
+               group.addTask { try await optimizeForLinuxKernel(ast) }
+               return try await combineLinuxOptimizations(group)
+           }
+       }
+   }
+   ```
+
+3. **Windows Migration**
+   ```swift
+   // Windows-specific features
+   public struct WindowsPlatformFeatures {
+       public func compileForWindows(_ source: String) async throws -> WindowsBinary {
+           // Use Windows-specific features
+           let ast = try await parse(source)
+           let optimized = try await optimizeForWindows(ast)
+           return try await generateWindowsBinary(optimized)
+       }
+       
+       private func optimizeForWindows(_ ast: AST) async throws -> OptimizedAST {
+           // Windows-specific optimization passes
+           return try await withTaskGroup(of: OptimizedAST.self) { group in
+               group.addTask { try await optimizeForPE(ast) }
+               group.addTask { try await optimizeForWindowsAPI(ast) }
+               return try await combineWindowsOptimizations(group)
+           }
+       }
+   }
+   ```
+
+### Performance Optimization Strategies
+
+1. **Memory Management**
+   ```swift
+   public actor MemoryOptimizer {
+       private var cache: [String: OptimizedAST] = [:]
+       
+       public func optimize(_ ast: AST) async throws -> OptimizedAST {
+           // Use modern memory management
+           if let cached = cache[ast.id] {
+               return cached
+           }
+           
+           let optimized = try await withTaskGroup(of: OptimizedAST.self) { group in
+               // Parallel memory optimization
+               group.addTask { try await optimizeStackUsage(ast) }
+               group.addTask { try await optimizeHeapUsage(ast) }
+               return try await combineMemoryOptimizations(group)
+           }
+           
+           cache[ast.id] = optimized
+           return optimized
+       }
+   }
+   ```
+
+2. **Concurrency Optimization**
+   ```swift
+   public actor ConcurrencyOptimizer {
+       public func optimize(_ ast: AST) async throws -> OptimizedAST {
+           // Use modern concurrency features
+           return try await withThrowingTaskGroup(of: OptimizedAST.self) { group in
+               // Parallel optimization passes
+               group.addTask { try await optimizeTaskCreation(ast) }
+               group.addTask { try await optimizeActorUsage(ast) }
+               group.addTask { try await optimizeAsyncAwait(ast) }
+               return try await combineConcurrencyOptimizations(group)
+           }
+       }
+   }
+   ```
+
+3. **Platform-Specific Optimizations**
+   ```swift
+   public actor PlatformOptimizer {
+       public func optimize(_ ast: AST, for platform: PlatformTarget) async throws -> OptimizedAST {
+           // Use platform-specific optimizations
+           return try await withTaskGroup(of: OptimizedAST.self) { group in
+               // Platform-specific optimization passes
+               group.addTask { try await platform.optimizeArchitecture(ast) }
+               group.addTask { try await platform.optimizeOSFeatures(ast) }
+               return try await platform.combineOptimizations(group)
+           }
+       }
+   }
+   ```
+
+### Component-Specific Migration Examples
+
+#### OuroLangLSP
+
+```swift
+// Example of using async/await in LSP request handling
+public actor LanguageServer {
+    public func handleRequest(_ request: Request) async throws -> Response {
+        // Use async/await for non-blocking request processing
+        return try await processRequest(request)
+    }
+}
+```
+
+#### OuroTranspiler
+
+```swift
+// Example of optimizing transpiler with Swift concurrency
+public actor Transpiler {
+    public func transpile(source: String) async throws -> TranspiledOutput {
+        // Use structured concurrency for efficient transpilation
+        async let parsed = parse(source)
+        async let transformed = transform(parsed)
+        return try await generateCode(from: transformed)
+    }
+}
+```
+
+#### OuroLangCore
+
+```swift
+// Example of using Swift's type system improvements in AST
+public struct ASTNode: Hashable, Codable, Sendable {
+    // Use existential any for flexible type handling
+    public var type: any TypeProtocol
+}
+```
+
+#### OuroCompiler
+
+```swift
+// Example of using strict concurrency in compiler
+public actor Compiler {
+    public func compile(source: String) async throws -> CompiledOutput {
+        // Use actors to ensure thread-safe compilation
+        let ast = try await parse(source)
+        return try await generateCode(from: ast)
+    }
+}
+```
+
+### Expanded Testing Section
+
+#### Test Cases for Swift 6 Features
+
+```swift
+final class Swift6FeatureTests: XCTestCase {
+    func testAsyncAwait() async throws {
+        // Test async/await functionality
+        let result = try await someAsyncFunction()
+        XCTAssertEqual(result, expectedValue)
+    }
+
+    func testStructuredConcurrency() async throws {
+        // Test structured concurrency with task groups
+        let results = try await withThrowingTaskGroup(of: Int.self) { group in
+            for i in 0..<10 {
+                group.addTask { i * 2 }
+            }
+            return try await group.collect()
+        }
+        XCTAssertEqual(results, [0, 2, 4, 6, 8, 10, 12, 14, 16, 18])
+    }
+}
+```
+
+### Platform-Specific Migration Guidelines
+
+#### macOS/iOS
+
+```swift
+// Use platform-specific APIs with Swift 6
+@available(macOS 12.0, iOS 15.0, *)
+public struct PlatformFeatures {
+    public func useModernAPIs() async throws {
+        // Example of using modern APIs
+        let data = try await URLSession.shared.data(from: someURL)
+    }
+}
+```
+
+#### Linux
+
+```swift
+// Optimize for Linux-specific features
+public struct LinuxOptimizations {
+    public func optimizeForLinux() async throws {
+        // Use Linux-specific system calls
+        let result = try await someLinuxSpecificFunction()
+    }
+}
+```
+
+#### Windows
+
+```swift
+// Use Windows-specific optimizations
+public struct WindowsFeatures {
+    public func optimizeForWindows() async throws {
+        // Example of using Windows APIs
+        let result = try await someWindowsSpecificFunction()
+    }
+}
+```
+
+### Performance Optimization Strategies
+
+#### Memory Management
+
+```swift
+public actor MemoryManager {
+    public func optimizeMemoryUsage() async throws {
+        // Use Swift's memory management features
+        let optimizedData = try await optimizeDataStructure()
+    }
+}
+```
+
+#### Concurrency Optimization
+
+```swift
+public actor ConcurrencyManager {
+    public func optimizeConcurrency() async throws {
+        // Use Swift's concurrency model for optimization
+        let result = try await performConcurrentTasks()
+    }
+}
+```
+
+#### Platform-Specific Optimizations
+
+```swift
+public actor PlatformOptimizer {
+    public func optimizeForPlatform() async throws {
+        // Use platform-specific optimizations
+        let optimizedResult = try await optimizeForCurrentPlatform()
+    }
+}
+```
+
+## .ouro Example Scripts
+
+### 1. Codebase Integration
+
+```ouro
+// Import core modules from the codebase
+import "Lava"
+import "OuroLangCore"
+
+func main() {
+    let users = ["Alice", "Bob", "Charlie"]
+    users.forEach(user => print("Hello, ${user}!"))
+}
+```
+
+### 2. Linter Errors
+
+```ouro
+// This example shows common linter errors detected
+func calculateSum(a, b) { // Error: Missing type annotations for parameters
+    return a + b
+}
+
+missingVar = 10 // Error: 'missingVar' is not declared
+```
+
+### 3. Web Example
+
+```ouro
+// Simple HTTP server example
+import "WebServer"
+
+async func startServer() {
+    let server = WebServer(port: 8080)
+    await server.route("/", req => {
+        return "Hello, .ouro Web!"
+    })
+    await server.listen()
+}
+
+startServer()
+```
+
+### 4. Recent Changes
+
+```ouro
+// Demonstrates new 'async' and 'await' syntax from recent updates
+async func fetchData() {
+    let data = await HttpClient.get("https://api.example.com/data")
+    print("Received: ${data}")
+}
+
+fetchData()
+```

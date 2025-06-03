@@ -1,10 +1,8 @@
 import Foundation
-import SwiftCompilerPlugin
+import CompilerPluginSupport
 import SwiftSyntax
 import SwiftSyntaxBuilder
 import SwiftSyntaxMacros
-
-{ { REWRITTEN_CODE } }
 
 /// Implementation of the `@JavaBuilder` macro, which mimics Java builder pattern
 public struct JavaBuilderMacro: MemberMacro {

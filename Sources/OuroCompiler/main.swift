@@ -166,21 +166,54 @@ func compile(options: CompilerOptions) throws {
         throw CompilerError.parseError(error)
     }
     
-    // TODO: Type checking (semantic analysis)
-    
-    // TODO: Code generation based on target
+    // Semantic analysis (type checking and symbol resolution)
     if options.verbose {
-        print("Code generation for target '\(options.target)' not yet implemented")
+        print("Starting semantic analysis...")
     }
-    
-    // TODO: Output the compiled code
+    do {
+        let analyzer = SemanticAnalyzer()
+        try analyzer.analyze(ast)
+        if options.verbose {
+            print("Semantic analysis complete")
+        }
+    } catch let error as SymbolError {
+        throw CompilerError.compileError(error.description)
+    }
+
+    // Code generation based on target
+    if options.verbose {
+        print("Starting code generation for target '", options.target, "'")
+    }
+    let generator: CodeGenerator
+    switch options.target.lowercased() {
+    case "llvm":
+        generator = LLVMCodeGenerator()
+    case "js":
+        generator = JSCodeGenerator()
+    case "swift":
+        generator = SwiftCodeGenerator()
+    default:
+        throw CompilerError.compileError("Unsupported target: \(options.target)")
+    }
+    let outputCode: String
+    do {
+        outputCode = try generator.emit(ast)
+    } catch {
+        throw CompilerError.compileError("Code generation failed: \(error)")
+    }
+
+    // Write the output to file
     let outputPath = options.outputFile ?? sourceURL.deletingPathExtension().appendingPathExtension(targetExtension(for: options.target)).path
-    
-    if options.verbose {
-        print("Output would be written to: \(outputPath)")
+    do {
+        try outputCode.write(to: URL(fileURLWithPath: outputPath), atomically: true, encoding: .utf8)
+        if options.verbose {
+            print("Output written to: \(outputPath)")
+        }
+    } catch {
+        throw CompilerError.outputError(error.localizedDescription)
     }
-    
-    print("Compilation completed successfully (note: actual code generation not yet implemented)")
+
+    print("Compilation completed successfully.")
 }
 
 func targetExtension(for target: String) -> String {
@@ -211,4 +244,13 @@ do {
 } catch {
     print("\(error)")
     exit(1)
+}
+
+// Example of using strict concurrency in compiler
+public actor Compiler {
+    public func compile(source: String) async throws -> CompiledOutput {
+        // Use actors to ensure thread-safe compilation
+        let ast = try await parse(source)
+        return try await generateCode(from: ast)
+    }
 }
