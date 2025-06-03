@@ -1,4 +1,4 @@
-// swift-tools-version:6.1
+// swift-tools-version:6.2
 import PackageDescription
 import CompilerPluginSupport
 
@@ -6,7 +6,7 @@ let package = Package(
     name: "Lava",
     products: [
         // Core library containing Lava DSL implementation
-        .library(
+        .executable(
             name: "Lava",
             targets: ["Lava"]
         ),
@@ -76,7 +76,7 @@ let package = Package(
                 .enableUpcomingFeature("StrictConcurrency"),
             ]
         ),
-        .target(
+        .executableTarget(
             name: "Lava",
             dependencies: [
                 "LavaMacros",
@@ -149,7 +149,7 @@ let package = Package(
         // MLIR C API system library target and Swift wrapper
         .systemLibrary(
             name: "CMLIR",
-            path: "cmlir"
+            path: "Sources/CMLIR"
         ),
         .target(
             name: "MLIRSwift",

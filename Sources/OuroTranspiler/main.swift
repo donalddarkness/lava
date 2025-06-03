@@ -336,7 +336,8 @@ extension Transpiler {
         case .cpp:
             generator = CppCodeGenerator(webDefinitions: webDefinitions)
         case .swift:
-            generator = SwiftCodeGenerator(webDefinitions: webDefinitions)        case .mlir:
+            generator = SwiftCodeGenerator(webDefinitions: webDefinitions)        
+        case .mlir:
             generator = MLIRCodeGenerator(webDefinitions: webDefinitions)
         case .llvm:
             generator = LLVMCodeGenerator(webDefinitions: webDefinitions)

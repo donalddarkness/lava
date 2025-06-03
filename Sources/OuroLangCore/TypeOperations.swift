@@ -8,44 +8,50 @@
 import Foundation
 
 /// Provides extended operations on types like subtyping, unification, and distribution
-public actor TypeOperations {
+public class TypeOperations {
     /// The type resolver instance for resolving types
     private let resolver: TypeResolver
     
     /// Memoization cache for subtype relationship checks
     private var subtypingCache: [String: Bool] = [:]
     
+    /// Queue for thread safety
+    private let queue = DispatchQueue(label: "com.ourolang.typeoperations", qos: .userInitiated)
+    
     /// Create a new TypeOperations instance with a resolver
     public init(resolver: TypeResolver) {
         self.resolver = resolver
     }
-    
-    /// Check if `source` is a subtype of `target`
-    public func isSubtype(source: TypeNode, target: TypeNode) async -> Bool {
+      /// Check if `source` is a subtype of `target`
+    public func isSubtype(source: TypeNode, target: TypeNode) -> Bool {
         // Create a cache key
         let cacheKey = "\(source.description):<\(target.description)"
         
-        // Check cache
-        if let result = subtypingCache[cacheKey] {
+        // Thread-safe cache access
+        return queue.sync {
+            // Check cache
+            if let result = subtypingCache[cacheKey] {
+                return result
+            }
+            
+            // Calculate the result
+            let result = calculateSubtyping(source: source, target: target)
+            
+            // Cache the result
+            subtypingCache[cacheKey] = result
+            
             return result
         }
-        
-        // Calculate the result
-        let result = await calculateSubtyping(source: source, target: target)
-        
-        // Cache the result
-        subtypingCache[cacheKey] = result
-        
-        return result
     }
     
     /// Internal implementation of subtyping relationship
-    private func calculateSubtyping(source: TypeNode, target: TypeNode) async -> Bool {
+    private func calculateSubtyping(source: TypeNode, target: TypeNode) -> Bool {
         // Handle union types
         if let unionSource = source as? UnionType {
             // A union is a subtype if all its members are subtypes
             for type in unionSource.types {
-                if !await self.isSubtype(source: type, target: target) {
+                let isTypeSubtype = self.isSubtype(source: type, target: target)
+                if !isTypeSubtype {
                     return false
                 }
             }
@@ -55,7 +61,7 @@ public actor TypeOperations {
         if let unionTarget = target as? UnionType {
             // A type is a subtype of a union if it's a subtype of any union member
             for type in unionTarget.types {
-                if await isSubtype(source: source, target: type) {
+                if isSubtype(source: source, target: type) {
                     return true
                 }
             }
@@ -66,7 +72,7 @@ public actor TypeOperations {
         if let intersectionSource = source as? IntersectionType {
             // An intersection is a subtype if any of its members is a subtype
             for type in intersectionSource.types {
-                if await isSubtype(source: type, target: target) {
+                if isSubtype(source: type, target: target) {
                     return true
                 }
             }
@@ -76,7 +82,7 @@ public actor TypeOperations {
         if let intersectionTarget = target as? IntersectionType {
             // A type is a subtype of an intersection if it's a subtype of all its members
             for type in intersectionTarget.types {
-                if !await isSubtype(source: source, target: type) {
+                if !isSubtype(source: source, target: type) {
                     return false
                 }
             }
@@ -85,18 +91,18 @@ public actor TypeOperations {
         
         // Handle array types
         if let arraySource = source as? ArrayType, let arrayTarget = target as? ArrayType {
-            return await isSubtype(source: arraySource.elementType, target: arrayTarget.elementType)
+            return isSubtype(source: arraySource.elementType, target: arrayTarget.elementType)
         }
         
         // Handle dictionary types
         if let dictSource = source as? DictionaryType, let dictTarget = target as? DictionaryType {
-            return await isSubtype(source: dictSource.keyType, target: dictTarget.keyType) &&
-                   await isSubtype(source: dictSource.valueType, target: dictTarget.valueType)
+            return isSubtype(source: dictSource.keyType, target: dictTarget.keyType) &&
+                   isSubtype(source: dictSource.valueType, target: dictTarget.valueType)
         }
         
         // Handle set types
         if let setSource = source as? SetType, let setTarget = target as? SetType {
-            return await isSubtype(source: setSource.elementType, target: setTarget.elementType)
+            return isSubtype(source: setSource.elementType, target: setTarget.elementType)
         }
         
         // Handle tuple types
@@ -106,18 +112,19 @@ public actor TypeOperations {
             }
             
             for i in 0..<tupleSource.elementTypes.count {
-                if !await isSubtype(source: tupleSource.elementTypes[i], target: tupleTarget.elementTypes[i]) {
+                let isElementSubtype = isSubtype(source: tupleSource.elementTypes[i], target: tupleTarget.elementTypes[i])
+                if !isElementSubtype {
                     return false
                 }
             }
             
             return true
         }
-        
-        // Handle function types
+          // Handle function types
         if let funcSource = source as? FunctionType, let funcTarget = target as? FunctionType {
             // Return type is covariant (source is subtype iff return type is subtype)
-            if !await isSubtype(source: funcSource.returnType, target: funcTarget.returnType) {
+            let isReturnTypeSubtype = isSubtype(source: funcSource.returnType, target: funcTarget.returnType)
+            if !isReturnTypeSubtype {
                 return false
             }
             
@@ -127,19 +134,19 @@ public actor TypeOperations {
             }
             
             for i in 0..<funcSource.parameterTypes.count {
-                if !await isSubtype(source: funcTarget.parameterTypes[i], target: funcSource.parameterTypes[i]) {
+                let isParamSubtype = isSubtype(source: funcTarget.parameterTypes[i], target: funcSource.parameterTypes[i])
+                if !isParamSubtype {
                     return false
                 }
             }
-            
-            return true
+              return true
         }
         
         // Handle optional types
         if let optSource = source as? OptionalType {
             if let optTarget = target as? OptionalType {
                 // T? is subtype of U? iff T is subtype of U
-                return await isSubtype(source: optSource.wrappedType, target: optTarget.wrappedType)
+                return isSubtype(source: optSource.wrappedType, target: optTarget.wrappedType)
             }
             
             // T? is never a subtype of non-optional U
@@ -148,7 +155,7 @@ public actor TypeOperations {
         
         if let optTarget = target as? OptionalType {
             // Non-optional T is always a subtype of T?
-            return await isSubtype(source: source, target: optTarget.wrappedType)
+            return isSubtype(source: source, target: optTarget.wrappedType)
         }
         
         // Handle never type (bottom type)
@@ -171,41 +178,38 @@ public actor TypeOperations {
         // By default, types are only subtypes of themselves
         return source == target
     }
-    
-    /// Calculate the nearest common supertype (least upper bound) of two types
-    public func findCommonSupertype(_ type1: TypeNode, _ type2: TypeNode) async -> TypeNode {
+      /// Calculate the nearest common supertype (least upper bound) of two types
+    public func findCommonSupertype(_ type1: TypeNode, _ type2: TypeNode) -> TypeNode {
         // If one is a subtype of the other, the supertype is the answer
-        if await isSubtype(source: type1, target: type2) {
+        if isSubtype(source: type1, target: type2) {
             return type2
         }
         
-        if await isSubtype(source: type2, target: type1) {
+        if isSubtype(source: type2, target: type1) {
             return type1
         }
-        
-        // Handle optional types
+          // Handle optional types
         if let opt1 = type1 as? OptionalType, let opt2 = type2 as? OptionalType {
             // The common supertype of T? and U? is (common_supertype(T, U))?
-            let innerSupertype = await findCommonSupertype(opt1.wrappedType, opt2.wrappedType)
+            let innerSupertype = findCommonSupertype(opt1.wrappedType, opt2.wrappedType)
             return OptionalType(wrappedType: innerSupertype, line: type1.line, column: type1.column)
         }
         
         if let opt1 = type1 as? OptionalType {
             // The common supertype of T? and U is (common_supertype(T, U))?
-            let innerSupertype = await findCommonSupertype(opt1.wrappedType, type2)
+            let innerSupertype = findCommonSupertype(opt1.wrappedType, type2)
             return OptionalType(wrappedType: innerSupertype, line: type1.line, column: type1.column)
         }
         
         if let opt2 = type2 as? OptionalType {
             // The common supertype of T and U? is (common_supertype(T, U))?
-            let innerSupertype = await findCommonSupertype(type1, opt2.wrappedType)
+            let innerSupertype = findCommonSupertype(type1, opt2.wrappedType)
             return OptionalType(wrappedType: innerSupertype, line: type1.line, column: type1.column)
         }
-        
-        // Handle array types
+          // Handle array types
         if let arr1 = type1 as? ArrayType, let arr2 = type2 as? ArrayType {
             // The common supertype of T[] and U[] is (common_supertype(T, U))[]
-            let elementSupertype = await findCommonSupertype(arr1.elementType, arr2.elementType)
+            let elementSupertype = findCommonSupertype(arr1.elementType, arr2.elementType)
             return ArrayType(elementType: elementSupertype, line: type1.line, column: type1.column)
         }
         
@@ -270,9 +274,8 @@ public actor TypeOperations {
             return type2
         }
     }
-    
-    /// Try to unify two types (find a substitution that makes them equal)
-    public func unify(_ type1: TypeNode, _ type2: TypeNode, context: TypeResolutionContext) async throws -> [String: TypeNode] {
+      /// Try to unify two types (find a substitution that makes them equal)
+    public func unify(_ type1: TypeNode, _ type2: TypeNode, context: TypeResolutionContext) throws -> [String: TypeNode] {
         var substitutions: [String: TypeNode] = [:]
         
         // If types are already equal, no substitution needed
@@ -320,16 +323,14 @@ public actor TypeOperations {
         }
         
         // Handle compound types
-        
-        // Arrays
+          // Arrays
         if let arr1 = type1 as? ArrayType, let arr2 = type2 as? ArrayType {
-            return try await unify(arr1.elementType, arr2.elementType, context: context)
+            return try unify(arr1.elementType, arr2.elementType, context: context)
         }
-        
-        // Dictionaries
+          // Dictionaries
         if let dict1 = type1 as? DictionaryType, let dict2 = type2 as? DictionaryType {
-            let keySubst = try await unify(dict1.keyType, dict2.keyType, context: context)
-            let valueSubst = try await unify(dict1.valueType, dict2.valueType, context: context)
+            let keySubst = try unify(dict1.keyType, dict2.keyType, context: context)
+            let valueSubst = try unify(dict1.valueType, dict2.valueType, context: context)
             
             // Merge substitutions, checking for conflicts
             return try mergeSubstitutions(keySubst, valueSubst)
@@ -346,13 +347,12 @@ public actor TypeOperations {
                     column: type1.column
                 )
             }
-            
-            // Unify return types
-            var allSubst = try await unify(func1.returnType, func2.returnType, context: context)
+              // Unify return types
+            var allSubst = try unify(func1.returnType, func2.returnType, context: context)
             
             // Unify parameter types
             for i in 0..<func1.parameterTypes.count {
-                let paramSubst = try await unify(func1.parameterTypes[i], func2.parameterTypes[i], context: context)
+                let paramSubst = try unify(func1.parameterTypes[i], func2.parameterTypes[i], context: context)
                 allSubst = try mergeSubstitutions(allSubst, paramSubst)
             }
             
@@ -436,5 +436,21 @@ public actor TypeOperations {
         default:
             return type
         }
+    }
+}
+
+// MARK: - TypeNode Extension
+
+/// Extension to TypeNode to add isSubtypeOf method
+extension TypeNode {
+    /// Check if this type is a subtype of the target type
+    /// This is a convenience method that uses a shared TypeOperations instance
+    public func isSubtypeOf(_ target: TypeNode) -> Bool {
+        // Create a private TypeOperations instance for this check if needed
+        // This avoids depending on the TypeChecker initialization
+        let operations = TypeOperations(resolver: TypeResolver())
+        
+        // Delegate to the TypeOperations implementation
+        return operations.isSubtype(source: self, target: target)
     }
 }

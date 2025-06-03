@@ -9,7 +9,10 @@ import Foundation
 
 /// TypeChecker performs comprehensive type checking on the AST
 /// It validates type correctness, resolves symbols, and applies language rules
-public actor TypeChecker {
+public class TypeChecker {
+    /// Shared instance for convenient access
+    public static let shared = TypeChecker()
+    
     /// The symbol table for resolving symbols
     private let symbolTable: SymbolTable
     
@@ -17,7 +20,7 @@ public actor TypeChecker {
     private let typeResolver: TypeResolver
     
     /// The type operations for performing advanced type operations
-    private let typeOperations: TypeOperations
+    internal let typeOperations: TypeOperations
     
     /// Collected errors during type checking
     private var errors: [Error] = []
