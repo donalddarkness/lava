@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Swift toolchain
+        uses: fwal/setup-swift@v1
+        with:
+          swift-version: '5.9'
+
+      - name: Resolve dependencies
+        run: swift package resolve
+
+      - name: Build
+        run: swift build --configuration debug --enable-test-discovery
+
+      - name: Run tests
+        run: swift test --enable-test-discovery
+
+  generate-docs:
+    needs: build-and-test
+    runs-on: macos-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Swift toolchain
+        uses: fwal/setup-swift@v1
+        with:
+          swift-version: '5.9'
+
+      - name: Generate documentation
+        run: |
+          swift package \
+            --allow-writing-to-directory docs \
+            generate-documentation \
+            --target Lava \
+            --transform-for-static-hosting
+
+      - name: Archive documentation
+        uses: actions/upload-artifact@v3
+        with:
+          name: documentation
+          path: docs
